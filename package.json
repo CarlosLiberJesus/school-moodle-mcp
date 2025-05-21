@@ -1,0 +1,20 @@
+{
+  "name": "school-moodle-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for interacting with Moodle",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node build/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.50",
+    "typescript": "^5.4.2"
+  }
+}
