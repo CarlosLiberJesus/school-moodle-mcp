@@ -156,7 +156,7 @@ interface MoodleModuleContent { // Para módulos como 'resource' ou 'page'
   filesize?: string;
   fileurl?: string;
   mimetype?: string;
-  // ... para 'page', pode haver 'content' com HTML
+  // ... para 'page', pode haver 'content' with HTML
 }
 
 class MoodleApiClient {
@@ -416,9 +416,12 @@ class MoodleMCP {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       console.log("CallToolRequestSchema handler called!");
+      console.log("request.params:", request.params);
       console.log(`Received CallToolRequest for tool: ${request.params.name}`, request.params.input);
       const toolName = request.params.name;
-      const toolInput = request.params.input || {};
+      //const toolInput = request.params.input || request.params.arguments || {};
+      const toolInput = request.params.arguments || {};
+      console.log("toolInput:", toolInput);
 
       let resultData: any;
 
@@ -428,17 +431,54 @@ class MoodleMCP {
           break;
 
         case 'get_course_contents':
-          const courseId = (toolInput as any).course_id; // Explicitly cast to any
-          console.log("toolInput:", toolInput);
-          console.log("courseId:", courseId);
-          if (typeof courseId !== 'number') {
-            throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'course_id' (number) for ${toolName}. Received: ${courseId}`);
+          // Log completo de request.params para ver onde os argumentos podem estar
+          console.log("DEBUG: Full request.params for get_course_contents:", JSON.stringify(request.params, null, 2));
+          
+          //const currentToolInput = request.params.input || {}; // A sua linha atual
+          const currentToolInput = request.params.arguments || {};
+          console.log("DEBUG: request.params.input (toolInput) for get_course_contents:", JSON.stringify(currentToolInput, null, 2));
+
+          // Tentar aceder a course_id de formas diferentes para teste:
+          let courseId: number | undefined;
+
+          // 1. Do input aninhado (o que você está a tentar e que está a falhar)
+          if (typeof (currentToolInput as any)?.course_id === 'number') {
+            courseId = (currentToolInput as any).course_id;
+            console.log("DEBUG: course_id from request.params.input.course_id:", courseId);
           }
+          // 2. Diretamente de params (se o SDK "achatar" os argumentos)
+          else if (typeof (request.params as any)?.course_id === 'number') {
+            courseId = (request.params as any).course_id;
+            console.log("DEBUG: course_id from request.params.course_id:", courseId);
+          }
+          // 3. Se params.input for uma string JSON que precisa de ser parseada (menos provável com um SDK)
+          else if (typeof request.params.input === 'string') {
+            try {
+              const parsedInput = JSON.parse(request.params.input);
+              if (typeof parsedInput?.course_id === 'number') {
+                courseId = parsedInput.course_id;
+                console.log("DEBUG: course_id from parsed request.params.input:", courseId);
+              } else {
+                console.log("DEBUG: request.params.input is a string, but course_id not found after parsing or not a number:", parsedInput);
+              }
+            } catch (e) {
+              console.log("DEBUG: request.params.input is a string, but failed to parse as JSON:", request.params.input, e);
+            }
+          } else {
+              console.log("DEBUG: course_id not found in expected locations or not a number.");
+          }
+
+          console.log("Final determined courseId:", courseId);
+
+          if (typeof courseId !== 'number') {
+            throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'course_id' (number) for get_course_contents. Received in toolInput: ${JSON.stringify(currentToolInput)}, full params: ${JSON.stringify(request.params)}`);
+          }
+          
           resultData = await this.moodleClient.getCourseContents(courseId);
           break;
 
         case 'get_page_module_content':
-          const pageUrl = (toolInput as GetPageModuleContentInput).page_content_url;
+          const pageUrl = (toolInput as any)?.page_content_url;
           if (typeof pageUrl !== 'string' || !pageUrl.startsWith('http')) {
             throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'page_content_url' (string URL) for ${toolName}. Received: ${pageUrl}`);
           }
@@ -455,7 +495,7 @@ class MoodleMCP {
             ],
           };
         case 'get_resource_file_content':
-          const fileUrl = (toolInput as GetResourceFileContentInput).page_content_url;
+          const fileUrl = (toolInput as any)?.page_content_url;
           if (typeof fileUrl !== 'string' || !fileUrl.startsWith('http')) {
             throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'page_content_url' (string URL) for ${toolName}. Received: ${fileUrl}`);
           }
