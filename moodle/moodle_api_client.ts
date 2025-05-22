@@ -3,7 +3,6 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'node:https';
 import * as cheerio from 'cheerio';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { MOODLE_URL, MOODLE_TOKEN, NODE_ENV } from '../config/index.js'; // Ajustado para importar de config
 import type { MoodleCourse, MoodleSection } from './moodle_types.js';
 // Importar pdf-parse e mammoth quando forem usados
 // import pdf from 'pdf-parse';
@@ -12,7 +11,11 @@ import type { MoodleCourse, MoodleSection } from './moodle_types.js';
 export class MoodleApiClient {
   private httpClient: AxiosInstance;
 
-  constructor() { // Não precisa mais de baseURL e token como args, pega de config
+  constructor() {
+    const MOODLE_URL = process.env.MOODLE_URL;
+    const MOODLE_TOKEN = process.env.MOODLE_TOKEN;
+    const NODE_ENV = process.env.NODE_ENV || 'development';
+
     if (!MOODLE_URL || !MOODLE_TOKEN) {
         // Este check é redundante se config/index.ts já faz exit, mas bom para clareza.
         throw new Error("MoodleApiClient: MOODLE_URL or MOODLE_TOKEN is not configured.");
@@ -79,7 +82,7 @@ export class MoodleApiClient {
       console.info(`Attempting to fetch page content from: ${pageUrl}`);
       const response = await axios.get(pageUrl, {
         httpsAgent: new https.Agent({
-          rejectUnauthorized: NODE_ENV === 'production',
+          rejectUnauthorized: process.env.NODE_ENV === 'production',
         }),
       });
       
@@ -113,7 +116,7 @@ export class MoodleApiClient {
       const response = await axios.get(fileUrl, {
         responseType: 'arraybuffer',
         httpsAgent: new https.Agent({
-          rejectUnauthorized: NODE_ENV === 'production',
+          rejectUnauthorized: process.env.NODE_ENV === 'production',
         }),
       });
 
@@ -145,26 +148,69 @@ export class MoodleApiClient {
     }
   }
 
-  async getActivityDetails(activityId: number): Promise<any | null> {
+  async getActivityDetails(params: { activity_id?: number; course_name?: string; activity_name?: string }): Promise<any | null> {
     try {
-      // Since there isn't a direct API to get activity details, we'll fetch all course contents and filter.
+      // First check if we have an activity_id
+      if (params.activity_id !== undefined) {
+        // We have an activity_id - use the old method
+        const courses = await this.getCourses();
+        if (!courses || courses.length === 0) {
+          throw new McpError(ErrorCode.InternalError, 'No courses found to retrieve activity details.');
+        }
+
+        // Assuming the activity belongs to the first course
+        const courseId = courses[0].id;
+        const sections = await this.getCourseContents(courseId);
+
+        if (!sections || sections.length === 0) {
+          throw new McpError(ErrorCode.InternalError, `No sections found for course ID ${courseId} when retrieving activity details.`);
+        }
+
+        let activityDetails: any = null;
+        for (const section of sections) {
+          if (section.modules) {
+            const foundModule = section.modules.find(module => module.id === params.activity_id);
+            if (foundModule) {
+              activityDetails = foundModule;
+              break;
+            }
+          }
+        }
+
+        if (!activityDetails) {
+          throw new McpError(ErrorCode.InvalidParams, `Activity with ID ${params.activity_id} not found.`);
+        }
+
+        return activityDetails;
+      }
+
+      // If we don't have an activity_id, we must have course_name and activity_name
+      if (!params.course_name || !params.activity_name) {
+        throw new McpError(ErrorCode.InvalidParams, 'Either activity_id or both course_name and activity_name must be provided.');
+      }
+
+      // Search by course name and activity name
       const courses = await this.getCourses();
       if (!courses || courses.length === 0) {
         throw new McpError(ErrorCode.InternalError, 'No courses found to retrieve activity details.');
       }
 
-      // Assuming the activity belongs to the first course.  A more robust solution would require knowing the course ID.
-      const courseId = courses[0].id;
-      const sections = await this.getCourseContents(courseId);
+      const course = courses.find(c => c.fullname === params.course_name || c.shortname === params.course_name);
+      if (!course) {
+        throw new McpError(ErrorCode.InvalidParams, `Course "${params.course_name}" not found.`);
+      }
 
+      const sections = await this.getCourseContents(course.id);
       if (!sections || sections.length === 0) {
-        throw new McpError(ErrorCode.InternalError, `No sections found for course ID ${courseId} when retrieving activity details.`);
+        throw new McpError(ErrorCode.InternalError, `No sections found for course ID ${course.id} when retrieving activity details.`);
       }
 
       let activityDetails: any = null;
       for (const section of sections) {
         if (section.modules) {
-          const foundModule = section.modules.find(module => module.id === activityId);
+          const foundModule = section.modules.find(module => 
+            module.name && module.name.toLowerCase().includes(params.activity_name?.toLowerCase() ?? "")
+          );
           if (foundModule) {
             activityDetails = foundModule;
             break;
@@ -173,14 +219,13 @@ export class MoodleApiClient {
       }
 
       if (!activityDetails) {
-        console.warn(`Activity with ID ${activityId} not found in course ID ${courseId}.`);
-        return null; // Or throw an error if you prefer.
+        throw new McpError(ErrorCode.InvalidParams, `Activity "${params.activity_name}" not found in course "${params.course_name}"`);
       }
 
       return activityDetails;
     } catch (error: any) {
-      console.error(`Error fetching activity details for ID ${activityId}:`, error.message);
-      throw new McpError(ErrorCode.InternalError, `Failed to retrieve activity details for ID ${activityId}: ${error.message}`);
+      console.error(`Error fetching activity details:`, error.message);
+      throw new McpError(ErrorCode.InternalError, `Failed to retrieve activity details: ${error.message}`);
     }
   }
 }

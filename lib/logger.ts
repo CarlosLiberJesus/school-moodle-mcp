@@ -15,79 +15,94 @@ let logStream: fs.WriteStream;
 let isFileLoggingEnabled = false;
 
 export interface LoggerOptions {
-  logDir?: string;
-  logFile?: string;
-  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+    logDir?: string;
+    logFile?: string;
+    logLevel?: 'debug' | 'info' | 'warn' | 'error';
 }
 
 export function setupFileLogger(baseDir: string, options: LoggerOptions = {}) {
-  const defaultOptions: Required<LoggerOptions> = {
-    logDir: path.join(baseDir, 'logs'),
-    logFile: 'mcp_server.log',
-    logLevel: 'info'
-  };
+    const defaultOptions: Required<LoggerOptions> = {
+        logDir: path.join(baseDir, 'logs'),
+        logFile: 'mcp_server.log',
+        logLevel: getLogLevelFromEnv() || 'info'
+    };
 
-  const config = { ...defaultOptions, ...options };
-  
-  const logDir = config.logDir;
-  const logFilePath = path.join(logDir, config.logFile);
+    const config = { ...defaultOptions, ...options };
 
-  try {
-    // Garantir que o diretório existe
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-      originalConsoleLog('Logger: Log directory created:', logDir);
+    // Create log directory if it doesn't exist
+    try {
+        if (!fs.existsSync(config.logDir)) {
+            fs.mkdirSync(config.logDir, { recursive: true });
+        }
+    } catch (error) {
+        console.error(`Failed to create log directory: ${error}`);
+        return;
     }
 
-    // Criar stream de log
-    logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
-    isFileLoggingEnabled = true;
+    // Create log file stream
+    try {
+        logStream = fs.createWriteStream(path.join(config.logDir, config.logFile), { flags: 'a' });
+        isFileLoggingEnabled = true;
+    } catch (error) {
+        console.error(`Failed to create log file: ${error}`);
+        return;
+    }
 
-    // Configurar eventos do stream
-    logStream.on('error', (err) => {
-      originalConsoleError('Logger: Error writing to log stream:', err);
-      isFileLoggingEnabled = false;
-    });
-    
-    logStream.on('open', () => {
-      originalConsoleLog('Logger: Log stream opened successfully:', logFilePath);
-    });
+    // Helper function to format log messages
+    function formatLog(level: string, ...args: any[]) {
+        const timestamp = new Date().toISOString();
+        const message = args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg) : arg
+        ).join(' ');
+        return `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+    }
 
-    // Configurar funções de logging
-    setupLoggingFunctions(config.logLevel);
+    // Override console methods
+    console.log = function(...args: any[]) {
+        const logMessage = formatLog('info', ...args);
+        originalConsoleLog.apply(console, args);
+        if (isFileLoggingEnabled) {
+            logStream.write(logMessage);
+        }
+    };
 
-  } catch (error: any) {
-    originalConsoleError('Logger: Error setting up file logger:', error.message);
-    isFileLoggingEnabled = false;
-  }
+    console.error = function(...args: any[]) {
+        const logMessage = formatLog('error', ...args);
+        originalConsoleError.apply(console, args);
+        if (isFileLoggingEnabled) {
+            logStream.write(logMessage);
+        }
+    };
+
+    console.warn = function(...args: any[]) {
+        const logMessage = formatLog('warn', ...args);
+        originalConsoleWarn.apply(console, args);
+        if (isFileLoggingEnabled) {
+            logStream.write(logMessage);
+        }
+    };
+
+    console.info = function(...args: any[]) {
+        const logMessage = formatLog('info', ...args);
+        originalConsoleInfo.apply(console, args);
+        if (isFileLoggingEnabled) {
+            logStream.write(logMessage);
+        }
+    };
 }
 
-function setupLoggingFunctions(logLevel: LoggerOptions['logLevel']) {
-  const createLogger = (originalConsoleFunc: (...args: any[]) => void, prefix: string) => {
-    return (...args: any[]) => {
-      const timestamp = new Date().toISOString();
-      const formattedMessage = `${timestamp} [${prefix}] ${util.format(...args)}`;
-      
-      // Escrever para o ficheiro se logStream estiver definido e habilitado
-      if (logStream && isFileLoggingEnabled) {
-        logStream.write(formattedMessage + '\n');
-      }
-      
-      // Escrever para a consola original
-      originalConsoleFunc(formattedMessage);
-    };
-  };
-
-  // Configurar funções de logging
-  console.log = createLogger(originalConsoleLog, 'INFO');
-  console.error = createLogger(originalConsoleError, 'ERROR');
-  console.warn = createLogger(originalConsoleWarn, 'WARN');
-  console.info = createLogger(originalConsoleInfo, 'INFO');
-  
-  // Se debug estiver habilitado, configurar também
-  if (logLevel === 'debug') {
-    console.debug = createLogger(originalConsoleLog, 'DEBUG');
-  }
+// Helper function to safely get log level from environment
+function getLogLevelFromEnv(): 'debug' | 'info' | 'warn' | 'error' | undefined {
+    const envLevel = process.env.LOG_LEVEL?.toLowerCase();
+    switch (envLevel) {
+        case 'debug':
+        case 'info':
+        case 'warn':
+        case 'error':
+            return envLevel;
+        default:
+            return undefined;
+    }
 }
 
 // Exportar funções originais
@@ -95,10 +110,10 @@ export { originalConsoleLog, originalConsoleError, originalConsoleWarn, original
 
 // Exportar utilitários
 export function isFileLoggingActive(): boolean {
-  return isFileLoggingEnabled;
+    return isFileLoggingEnabled;
 }
 
 export function getLogFilePath(): string | null {
-  if (!logStream) return null;
-  return logStream.path as string;
+    if (!logStream) return null;
+    return logStream.path as string;
 }

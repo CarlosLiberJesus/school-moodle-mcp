@@ -69,16 +69,79 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
   },
   {
     name: 'get_activity_details',
-    description: 'Retrieves the details of a specific activity from Moodle.',
+    description: 'Retrieves the details of a specific activity from Moodle. Can search by activity ID or by course name and activity name.',
+    inputSchema: {
+      type: 'object',
+      oneOf: [
+        {
+          properties: {
+            activity_id: {
+              type: 'integer',
+              description: 'The ID of the activity to retrieve details for.',
+            },
+          },
+          required: ['activity_id'],
+        },
+        {
+          properties: {
+            course_name: {
+              type: 'string',
+              description: 'The name of the course to search for the activity.',
+            },
+            activity_name: {
+              type: 'string',
+              description: 'The name of the activity to retrieve details for.',
+            },
+          },
+          required: ['course_name', 'activity_name'],
+        }
+      ]
+    },
+  },
+  {
+    name: 'analyze_activity_content',
+    description: 'Analyzes activity details and determines the appropriate method to fetch its content.',
     inputSchema: {
       type: 'object',
       properties: {
-        activity_id: {
-          type: 'integer',
-          description: 'The ID of the activity to retrieve details for.',
+        activity_details: {
+          type: 'object',
+          description: 'The activity details returned by get_activity_details.',
+          required: true,
         },
       },
-      required: ['activity_id'],
+      required: ['activity_details'],
+    },
+  },
+  {
+    name: 'fetch_activity_content',
+    description: 'Fetches the content of an activity in a single step, handling both page and resource types.',
+    inputSchema: {
+      type: 'object',
+      oneOf: [
+        {
+          properties: {
+            activity_id: {
+              type: 'integer',
+              description: 'The ID of the activity to fetch content for.',
+            },
+          },
+          required: ['activity_id'],
+        },
+        {
+          properties: {
+            course_name: {
+              type: 'string',
+              description: 'The name of the course containing the activity.',
+            },
+            activity_name: {
+              type: 'string',
+              description: 'The name of the activity to fetch content for.',
+            },
+          },
+          required: ['course_name', 'activity_name'],
+        }
+      ]
     },
   },
 ];

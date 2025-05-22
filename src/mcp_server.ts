@@ -1,30 +1,34 @@
 // src/mcp_server.ts
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  // CallToolResultSchema, // Se existir e for necessário tipar a resposta
-  ListToolsRequestSchema,
-  // ListToolsResultSchema, // Se existir
-  McpError,
-  ErrorCode,
-} from '@modelcontextprotocol/sdk/types.js';
 
 import { MoodleApiClient } from './../moodle/moodle_api_client.js';
 import { toolDefinitions, ToolDefinitionSchema } from './../tools/tool_definitions.js';
+import { ToolValidator } from './../tools/tool_validators.js';
 import type { 
     GetCourseContentsInput, 
     GetPageModuleContentInput, 
-    GetResourceFileContentInput 
-} from './../moodle/moodle_types.js'; // Tipos de input para as tools
+    GetResourceFileContentInput,
+    MoodleModuleContent 
+} from './../moodle/moodle_types.js';
+
+// Interface for tool calls
+interface ToolCall {
+  name: string;
+  arguments: Record<string, any>;
+}
 
 export class MoodleMCP {
   private server: Server;
   private moodleClient: MoodleApiClient;
-  private version: string = '0.2.7'; // Versão incrementada
+  private version: string = '0.2.7';
+  private toolValidator: ToolValidator;
 
   constructor() {
     this.moodleClient = new MoodleApiClient();
+    this.toolValidator = ToolValidator.getInstance();
 
     const serverCapabilitiesTools = Object.fromEntries(
         toolDefinitions.map((td: ToolDefinitionSchema) => [
@@ -45,110 +49,160 @@ export class MoodleMCP {
       },
       {
         capabilities: {
-          resources: {}, // Pode ser preenchido no futuro
-          tools: serverCapabilitiesTools,
-        }
+          resources: {},
+          tools: {
+            call: async (toolName: string, input: Record<string, any>) => {
+              return await this.handleTool(toolName, input);
+            },
+          },
+        },
       }
     );
-
-    this.setupToolHandlers();
-
-    this.server.onerror = (error) => console.error('MCP Server Core Error:', error);
-    
-    const signalHandler = async (signal: string) => {
-      console.info(`Received ${signal}, Moodle MCP server shutting down...`);
-      await this.server.close().catch(err => console.error('Error during server close:', err));
-      process.exit(0);
-    };
-    process.on('SIGINT', () => signalHandler('SIGINT'));
-    process.on('SIGTERM', () => signalHandler('SIGTERM'));
   }
 
-  private setupToolHandlers() {
-    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-      console.info("Received ListToolsRequest:", JSON.stringify(request, null, 2));
-      return {
-        tools: toolDefinitions.map(td => ({ // Mapear para a estrutura que o SDK espera
-          name: td.name,
-          description: td.description,
-          inputSchema: td.inputSchema,
-        })),
-      }; // Adicionar 'as ListToolsResultSchema' se o SDK tiver este tipo
-    });
+  // Public method to handle tools
+  private async handleTool(toolName: string, input: Record<string, any>): Promise<any> {
+    const toolDefinition = toolDefinitions.find(td => td.name === toolName);
+    if (!toolDefinition) {
+      throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
+    }
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const toolName = request.params.name;
-      // Usar a sua solução para obter o input:
-      const toolInput = request.params.input || (request.params as any).arguments || {};
-      
-      console.info(`Received CallToolRequest for tool: ${toolName}`, "Input:", JSON.stringify(toolInput, null, 2));
+    const validation = this.toolValidator.validateInput(toolName, input);
+    
+    if (!validation.isValid) {
+      throw validation.error;
+    }
 
-      let resultData: any;
-
-      try {
-        switch (toolName) {
-          case 'get_courses':
-            resultData = await this.moodleClient.getCourses();
-            break;
-
-          case 'get_course_contents':
-            const { course_id } = toolInput as GetCourseContentsInput;
-            if (typeof course_id !== 'number') {
-              throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'course_id' (number) for ${toolName}. Received: ${course_id}`);
-            }
-            resultData = await this.moodleClient.getCourseContents(course_id);
-            break;
-
-          case 'get_page_module_content':
-            const { page_content_url } = toolInput as GetPageModuleContentInput;
-            if (typeof page_content_url !== 'string' || !page_content_url.startsWith('http')) {
-              throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'page_content_url' (string URL) for ${toolName}. Received: ${page_content_url}`);
-            }
-            const htmlAsTextContent = await this.moodleClient.getPageModuleContentByUrl(page_content_url);
-            // Esta tool retorna texto diretamente, não um objeto JSON a ser stringificado
-            return { content: [{ type: 'text', text: htmlAsTextContent || "[Conteúdo da página não encontrado ou vazio]" }] };
-
-          case 'get_resource_file_content':
-            const { resource_file_url, mimetype } = toolInput as GetResourceFileContentInput;
-            if (typeof resource_file_url !== 'string' || !resource_file_url.startsWith('http')) {
-              throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'resource_file_url' (string URL) for ${toolName}. Received: ${resource_file_url}`);
-            }
-            if (typeof mimetype !== 'string' || mimetype.trim() === '') {
-              throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'mimetype' (string) for ${toolName}. Received: ${mimetype}`);
-            }
-            const fileTextContent = await this.moodleClient.getResourceFileContent(resource_file_url, mimetype);
-            // Esta tool retorna texto diretamente
-            return { content: [{ type: 'text', text: fileTextContent || "[Conteúdo do ficheiro não extraído ou vazio]" }] };
-
-          case 'get_activity_details':
-            const { activity_id } = toolInput;
-            if (typeof activity_id !== 'number') {
-              throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'activity_id' (number) for ${toolName}. Received: ${activity_id}`);
-            }
-            resultData = await this.moodleClient.getActivityDetails(activity_id);
-            break;
-
-          default:
-            console.warn(`Unknown tool called: ${toolName}`);
-            throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
-        }
-
-        // Resposta padrão para tools que retornam dados estruturados (JSON)
-        return {
-          content: [{
-              type: 'text', // Ou 'json_string' / 'json_object' se o SDK suportar
-              text: JSON.stringify(resultData, null, 2),
-          }],
-        }; // Adicionar 'as CallToolResultSchema' se o SDK tiver
-      } catch (error: any) {
-          if (error instanceof McpError) {
-              console.error(`MCP Error calling tool ${toolName}:`, error.message, `(Code: ${error.code})`);
-              throw error; // Re-throw McpError para o SDK tratar
-          }
-          console.error(`Unexpected error calling tool ${toolName}:`, error);
-          throw new McpError(ErrorCode.InternalError, `Unexpected error in tool ${toolName}: ${error.message}`);
+    const validatedInput = validation.validatedData;
+    
+    switch (toolName) {
+      case 'get_courses': {
+        return await this.moodleClient.getCourses();
       }
-    });
+      
+      case 'get_course_contents': {
+        const { course_id } = validatedInput as { course_id: number };
+        return await this.moodleClient.getCourseContents(course_id);
+      }
+      
+      case 'get_page_module_content': {
+        const { page_content_url } = validatedInput as { page_content_url: string };
+        return await this.moodleClient.getPageModuleContentByUrl(page_content_url);
+      }
+      
+      case 'get_resource_file_content': {
+        const { resource_file_url, mimetype } = validatedInput as { 
+          resource_file_url: string, 
+          mimetype: string 
+        };
+        return await this.moodleClient.getResourceFileContent(resource_file_url, mimetype);
+      }
+      
+      case 'get_activity_details': {
+        const { activity_id, course_name, activity_name } = validatedInput;
+        
+        if (activity_id !== undefined) {
+          if (typeof activity_id !== 'number') {
+            throw new McpError(ErrorCode.InvalidParams, `Invalid 'activity_id' (number) for ${toolName}. Received: ${activity_id}`);
+          }
+          return await this.moodleClient.getActivityDetails({ activity_id });
+        } else if (course_name && activity_name) {
+          if (typeof course_name !== 'string' || typeof activity_name !== 'string') {
+            throw new McpError(ErrorCode.InvalidParams, `Invalid 'course_name' or 'activity_name' for ${toolName}. Received: ${course_name}, ${activity_name}`);
+          }
+          return await this.moodleClient.getActivityDetails({ course_name, activity_name });
+        } else {
+          throw new McpError(ErrorCode.InvalidParams, `Either activity_id or both course_name and activity_name must be provided for ${toolName}`);
+        }
+      }
+
+      case 'analyze_activity_content': {
+        const { activity_details } = validatedInput as { activity_details: any };
+        
+        // Analyze the activity details to determine content type
+        const modname = activity_details.modname?.toLowerCase();
+        const contents = activity_details.contents || [];
+        
+        // Check if it's a page module
+        if (modname === 'page') {
+          const pageUrl = contents.find((c: MoodleModuleContent) => c.type === 'page')?.fileurl;
+          if (pageUrl) {
+            return {
+              type: 'page',
+              url: pageUrl,
+              fetchTool: 'get_page_module_content',
+              fetchParams: { page_content_url: pageUrl }
+            };
+          }
+        }
+        
+        // Check if it's a resource file
+        const resource = contents.find((c: MoodleModuleContent) => c.type === 'resource');
+        if (resource) {
+          return {
+            type: 'resource',
+            url: resource.fileurl,
+            mimetype: resource.mimetype,
+            fetchTool: 'get_resource_file_content',
+            fetchParams: { 
+              resource_file_url: resource.fileurl,
+              mimetype: resource.mimetype 
+            }
+          };
+        }
+        
+        // If we can't determine the content type
+        return {
+          type: 'unknown',
+          details: activity_details,
+          fetchTool: null,
+          fetchParams: null
+        };
+      }
+
+      case 'fetch_activity_content': {
+        const { activity_id, course_name, activity_name } = validatedInput;
+        
+        // First get the activity details
+        let activityDetails;
+        if (activity_id !== undefined) {
+          activityDetails = await this.moodleClient.getActivityDetails({ activity_id });
+        } else if (course_name && activity_name) {
+          activityDetails = await this.moodleClient.getActivityDetails({ course_name, activity_name });
+        } else {
+          throw new McpError(ErrorCode.InvalidParams, 'Either activity_id or both course_name and activity_name must be provided');
+        }
+        
+        // Analyze the content type
+        const modname = activityDetails.modname?.toLowerCase();
+        const contents = activityDetails.contents || [];
+        
+        // Handle page content
+        if (modname === 'page') {
+          const pageUrl = contents.find((c: MoodleModuleContent) => c.type === 'page')?.fileurl;
+          if (pageUrl) {
+            return await this.moodleClient.getPageModuleContentByUrl(pageUrl);
+          }
+        }
+        
+        // Handle resource file
+        const resource = contents.find((c: MoodleModuleContent) => c.type === 'resource');
+        if (resource) {
+          return await this.moodleClient.getResourceFileContent(resource.fileurl, resource.mimetype);
+        }
+        
+        // If we can't determine the content type
+        throw new McpError(ErrorCode.InvalidParams, `Could not determine content type for activity ${activity_id || activity_name}`);
+      }
+
+      default:
+        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
+    }
+  }
+
+  // Public method to call tools from tests
+  async callTool(toolName: string, input: Record<string, any>): Promise<any> {
+    return await this.handleTool(toolName, input);
   }
 
   async run() {
