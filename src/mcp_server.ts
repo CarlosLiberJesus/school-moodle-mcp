@@ -21,7 +21,7 @@ import type {
 export class MoodleMCP {
   private server: Server;
   private moodleClient: MoodleApiClient;
-  private version: string = '0.2.5'; // Versão incrementada
+  private version: string = '0.2.7'; // Versão incrementada
 
   constructor() {
     this.moodleClient = new MoodleApiClient();
@@ -35,6 +35,8 @@ export class MoodleMCP {
             }
         ])
     );
+
+    console.log("Loaded tools:", toolDefinitions.map(t => t.name));
 
     this.server = new Server(
       {
@@ -117,6 +119,14 @@ export class MoodleMCP {
             const fileTextContent = await this.moodleClient.getResourceFileContent(resource_file_url, mimetype);
             // Esta tool retorna texto diretamente
             return { content: [{ type: 'text', text: fileTextContent || "[Conteúdo do ficheiro não extraído ou vazio]" }] };
+
+          case 'get_activity_details':
+            const { activity_id } = toolInput;
+            if (typeof activity_id !== 'number') {
+              throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'activity_id' (number) for ${toolName}. Received: ${activity_id}`);
+            }
+            resultData = await this.moodleClient.getActivityDetails(activity_id);
+            break;
 
           default:
             console.warn(`Unknown tool called: ${toolName}`);

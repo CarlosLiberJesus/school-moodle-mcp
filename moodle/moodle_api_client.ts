@@ -144,4 +144,43 @@ export class MoodleApiClient {
       throw new McpError(ErrorCode.InternalError, `Could not retrieve or process file from URL: ${fileUrl}. ${error.message}`);
     }
   }
+
+  async getActivityDetails(activityId: number): Promise<any | null> {
+    try {
+      // Since there isn't a direct API to get activity details, we'll fetch all course contents and filter.
+      const courses = await this.getCourses();
+      if (!courses || courses.length === 0) {
+        throw new McpError(ErrorCode.InternalError, 'No courses found to retrieve activity details.');
+      }
+
+      // Assuming the activity belongs to the first course.  A more robust solution would require knowing the course ID.
+      const courseId = courses[0].id;
+      const sections = await this.getCourseContents(courseId);
+
+      if (!sections || sections.length === 0) {
+        throw new McpError(ErrorCode.InternalError, `No sections found for course ID ${courseId} when retrieving activity details.`);
+      }
+
+      let activityDetails: any = null;
+      for (const section of sections) {
+        if (section.modules) {
+          const foundModule = section.modules.find(module => module.id === activityId);
+          if (foundModule) {
+            activityDetails = foundModule;
+            break;
+          }
+        }
+      }
+
+      if (!activityDetails) {
+        console.warn(`Activity with ID ${activityId} not found in course ID ${courseId}.`);
+        return null; // Or throw an error if you prefer.
+      }
+
+      return activityDetails;
+    } catch (error: any) {
+      console.error(`Error fetching activity details for ID ${activityId}:`, error.message);
+      throw new McpError(ErrorCode.InternalError, `Failed to retrieve activity details for ID ${activityId}: ${error.message}`);
+    }
+  }
 }

@@ -22,7 +22,7 @@ setupFileLogger(__dirname); // Passar o diretório base para o logger
 
 // --- Imports Principais da Aplicação (depois do logger e config global) ---
 import { MoodleMCP } from './mcp_server.js';
-import './config/index.js'; // Importar para executar e verificar config (MOODLE_URL/TOKEN)
+import './../config/index.js'; // Importar para executar e verificar config (MOODLE_URL/TOKEN)
 
 async function main() {
   try {

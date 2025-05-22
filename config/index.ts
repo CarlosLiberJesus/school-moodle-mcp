@@ -1,12 +1,15 @@
 // src/config/index.ts
 import dotenv from 'dotenv';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Assumindo que este ficheiro está em src/config/index.ts
 // E o .env está na raiz do projeto (um nível acima de src)
 // E o script compilado estará em build/config/index.js
 // Então, a partir de build/config, subimos dois níveis para a raiz do projeto.
-const projectRoot = path.resolve(__dirname, '..', '..'); 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '..', '..');
 const envPath = path.join(projectRoot, '.env');
 
 const loadEnvResult = dotenv.config({ path: envPath });

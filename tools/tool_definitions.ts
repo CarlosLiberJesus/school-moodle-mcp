@@ -67,4 +67,18 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
       required: ['resource_file_url', 'mimetype'],
     },
   },
+  {
+    name: 'get_activity_details',
+    description: 'Retrieves the details of a specific activity from Moodle.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        activity_id: {
+          type: 'integer',
+          description: 'The ID of the activity to retrieve details for.',
+        },
+      },
+      required: ['activity_id'],
+    },
+  },
 ];
