@@ -1,13 +1,17 @@
 // src/index.ts
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import path, { dirname } from 'path';
 import { setupFileLogger } from './../lib/logger.js'; // Importar o setup do logger
 
 // --- Configuração do Logger (DEVE SER A PRIMEIRA COISA) ---
 // Obter o __dirname para o script atual (index.ts)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename); // Este __dirname será 'src' em dev, 'build' após compilação
-setupFileLogger(__dirname); // Passar o diretório base para o logger
+setupFileLogger(__dirname, {
+  logLevel: 'debug', // ou 'info', 'warn', 'error'
+  logDir: path.join(__dirname, 'logs'), // caminho personalizado
+  logFile: 'mcp_server.log' // nome do arquivo
+});
 // A partir daqui, console.log, etc., estão sobrescritos.
 
 // --- Configuração Global (ex: NODE_TLS_REJECT_UNAUTHORIZED) ---
