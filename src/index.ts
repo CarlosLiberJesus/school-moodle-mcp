@@ -1,7 +1,79 @@
-// src/moodle-mcp.ts
-if (!process.env.NODE_TLS_REJECT_UNAUTHORIZED) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// logger-setup.ts (ou no topo do seu ficheiro principal, antes de qualquer outro código)
+import fs from 'fs';
+import util from 'util';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Guardar referências às funções originais da consola ANTES de as sobrescrever
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+const originalConsoleInfo = console.info;
+
+// --- Configuração do Logging para Ficheiro ---
+let logStream: fs.WriteStream;
+const logDir = path.resolve(__dirname, '..', 'logs'); // Usar path.resolve para caminhos absolutos mais seguros
+const logFilePath = path.join(logDir, 'mcp_server.log');
+
+originalConsoleLog('Current working directory:', process.cwd());
+originalConsoleLog('Script directory (__dirname):', __dirname);
+originalConsoleLog('Attempting to create log directory:', logDir);
+
+try {
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+        originalConsoleLog('Log directory created:', logDir);
+    }
+
+    logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+    originalConsoleLog('Logging to file:', logFilePath);
+
+} catch (error: any) {
+    originalConsoleError('Error setting up file logger, falling back to console only:', error.message);
+    // Se a criação do stream falhar, não sobrescrevemos console.log,
+    // ou podemos ter um logStream que aponta para um stream nulo ou stdout.
+    // Por simplicidade aqui, vamos apenas logar o erro e continuar com a consola original.
+    // Para um fallback mais robusto, poderia criar um "null stream" ou não sobrescrever.
+    // Por agora, vamos assumir que se isto falhar, não fazemos o log para ficheiro.
+    // OU, para garantir que as sobrescritas funcionam mas não tentam escrever no ficheiro:
+    logStream = undefined as any; // Fallback: disable file logging by setting logStream to undefined
+    // Melhor seria ter uma flag `isFileLoggingEnabled`.
 }
+
+// --- Sobrescrever Funções da Consola ---
+// Apenas sobrescrevemos se logStream foi inicializado com sucesso
+if (logStream) {
+    const createLogger = (originalConsoleFunc: (...args: any[]) => void, prefix = '') => {
+        return (...args: any[]) => {
+            const timestamp = new Date().toISOString();
+            const formattedMessage = `${timestamp} [${prefix || 'LOG'}] ${util.format(...args)}`;
+            
+            // Escrever para o ficheiro se logStream estiver definido
+            if (logStream) {
+                logStream.write(formattedMessage + '\n');
+            }
+            
+            // Escrever para a consola original
+            originalConsoleFunc.apply(console, [`${timestamp} [${prefix || 'LOG'}]`, ...args]);
+        };
+    };
+
+    console.log = createLogger(originalConsoleLog, 'INFO');
+    console.error = createLogger(originalConsoleError, 'ERROR');
+    console.warn = createLogger(originalConsoleWarn, 'WARN');
+    console.info = createLogger(originalConsoleInfo, 'INFO'); // Pode querer um prefixo 'DEBUG' ou 'VERBOSE'
+
+    console.log("File logging configured. Subsequent console messages will be logged to file and stdout.");
+
+} else {
+    originalConsoleLog("File logging not configured (or failed). Using standard console output.");
+}
+
+// src/moodle-mcp.ts
 // #!/usr/bin/env node // Shebang é geralmente para scripts executáveis diretamente, pode não ser necessário se compilado e executado com node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -17,8 +89,10 @@ import axios, { AxiosInstance } from 'axios';
 import dotenv from 'dotenv';
 import https from 'node:https';
 import * as cheerio from 'cheerio';
+// import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
 
-// Ajuste o path se o seu .env estiver em outro local em relação a este ficheiro compilado em 'build'
+// Ajuste o path se o seu .env estiver em outro local em relação a este ficheiro compilado in 'build'
 dotenv.config({ path: '../../.env' }); // Se este ficheiro estiver em build/src/moodle-mcp.js, e .env na raiz, o path é ../../.env
                                        // Se este ficheiro estiver em build/moodle-mcp.js, e .env na raiz, o path é ../.env
 
@@ -28,11 +102,19 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 if (!MOODLE_TOKEN) {
   console.error('MOODLE_TOKEN environment variable is required');
-  process.exit(1);
+  if (logStream) {
+    logStream.end(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 }
 if (!MOODLE_URL) {
   console.error('MOODLE_URL environment variable is required');
-  process.exit(1);
+  if (logStream) {
+    logStream.end(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 }
 
 // --- Moodle Client ---
@@ -151,11 +233,48 @@ class MoodleApiClient {
       });
       
       const $ = cheerio.load(response.data);
-      const content = $('div.page-content').html() || response.data;
+      const content = $('div.page-content').text() || response.data;
       return content as string;
     } catch (error: any) {
       console.error(`Error fetching page content from URL ${pageUrl}:`, error.message);
       throw new McpError(ErrorCode.InternalError, `Could not retrieve content from page URL: ${pageUrl}. It might be inaccessible or not found.`);
+    }
+  }
+
+  async getResourceFileContent(fileUrl: string): Promise<string | null> {
+    try {
+      console.log(`Attempting to fetch file content from: ${fileUrl}`);
+      const response = await axios.get(fileUrl, {
+        responseType: 'arraybuffer', // Important for handling binary files
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: NODE_ENV !== 'production',
+        }),
+      });
+
+      const contentType = response.headers['content-type'];
+      const buffer = Buffer.from(response.data);
+
+      if (contentType === 'application/pdf') {
+        // const data = await pdf(buffer);
+        // return data.text;
+        return "PDF parsing is disabled";
+      } else if (
+        contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ) {
+        const result = await mammoth.extractRawText({ buffer: buffer });
+        return result.value;
+      } else if (contentType === 'text/plain') {
+        return buffer.toString('utf-8');
+      } else {
+        console.warn(`Unsupported content type: ${contentType}`);
+        return `Unsupported file type: ${contentType}`;
+      }
+    } catch (error: any) {
+      console.error(`Error fetching file content from URL ${fileUrl}:`, error.message);
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Could not retrieve content from file URL: ${fileUrl}. It might be inaccessible or not found.`
+      );
     }
   }
 }
@@ -173,6 +292,11 @@ interface GetPageModuleContentInput {
   page_content_url: string;
 }
 type GetPageModuleContentOutput = string; // HTML
+
+interface GetResourceFileContentInput {
+  page_content_url: string;
+}
+type GetResourceFileContentOutput = string;
 
 // 2. ToolDefinition genérico
 interface ToolDefinition<I = any, O = any> {
@@ -221,6 +345,21 @@ const toolDefinitions: ToolDefinition[] = [
       required: ['page_content_url'],
     },
   },
+  {
+    name: 'get_resource_file_content',
+    description: 'Retrieves the content of a resource file from Moodle, given its direct URL.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        page_content_url: {
+          type: 'string',
+          format: 'url',
+          description: 'The direct URL to the Moodle resource file.',
+        },
+      },
+      required: ['page_content_url'],
+    },
+  },
 ];
 
 class MoodleMCP {
@@ -229,7 +368,7 @@ class MoodleMCP {
   private version: string;
 
   constructor() {
-    this.version = '0.2.0';
+    this.version = '0.2.1';
     this.moodleClient = new MoodleApiClient(MOODLE_URL!, MOODLE_TOKEN!);
 
     this.server = new Server(
@@ -241,6 +380,7 @@ class MoodleMCP {
         capabilities: {
           resources: {},
           tools: Object.fromEntries(toolDefinitions.map(td => [td.name, {
+            description: td.description,
             inputSchema: td.inputSchema
           }]))
         }
@@ -275,6 +415,7 @@ class MoodleMCP {
     });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      console.log("CallToolRequestSchema handler called!");
       console.log(`Received CallToolRequest for tool: ${request.params.name}`, request.params.input);
       const toolName = request.params.name;
       const toolInput = request.params.input || {};
@@ -287,7 +428,9 @@ class MoodleMCP {
           break;
 
         case 'get_course_contents':
-          const courseId = (toolInput as GetCourseContentsInput).course_id;
+          const courseId = (toolInput as any).course_id; // Explicitly cast to any
+          console.log("toolInput:", toolInput);
+          console.log("courseId:", courseId);
           if (typeof courseId !== 'number') {
             throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'course_id' (number) for ${toolName}. Received: ${courseId}`);
           }
@@ -311,9 +454,26 @@ class MoodleMCP {
               },
             ],
           };
-
+        case 'get_resource_file_content':
+          const fileUrl = (toolInput as GetResourceFileContentInput).page_content_url;
+          if (typeof fileUrl !== 'string' || !fileUrl.startsWith('http')) {
+            throw new McpError(ErrorCode.InvalidParams, `Missing or invalid 'page_content_url' (string URL) for ${toolName}. Received: ${fileUrl}`);
+          }
+          const fileContent = await this.moodleClient.getResourceFileContent(fileUrl);
+          if (fileContent === null) {
+            throw new McpError(ErrorCode.InternalError, `Could not retrieve content from file URL: ${fileUrl}. It might be inaccessible or not found.`);
+          }
+          return {
+            content: [
+              {
+                type: 'text',
+                text: fileContent,
+              },
+            ],
+          };
         default:
           throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
+          break;
       }
 
       return {
