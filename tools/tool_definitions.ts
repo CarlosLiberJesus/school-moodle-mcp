@@ -99,21 +99,6 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     },
   },
   {
-    name: 'analyze_activity_content',
-    description: 'Analyzes activity details and determines the appropriate method to fetch its content.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        activity_details: {
-          type: 'object',
-          description: 'The activity details returned by get_activity_details.',
-          required: true,
-        },
-      },
-      required: ['activity_details'],
-    },
-  },
-  {
     name: 'fetch_activity_content',
     description: 'Fetches the content of an activity in a single step, handling both page and resource types.',
     inputSchema: {

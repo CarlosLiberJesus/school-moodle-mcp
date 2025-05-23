@@ -9,7 +9,7 @@
     "build": "tsc && npm run copy-config",
     "copy-config": "xcopy src\\config build\\config /E /I /Y",
     "dev": "ts-node-dev --respawn src/index.ts",
-    "test:activity": "tsx test/test_activity_fetch.ts"
+    "test:activity": "tsx test/test_activity_fetch.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

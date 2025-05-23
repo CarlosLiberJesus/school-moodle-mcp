@@ -163,7 +163,25 @@ export class MoodleMCP {
         // ...
         return await this.moodleClient.getActivityDetails(validatedInput);
       }
-      // ... seus outros cases para 'analyze_activity_content', 'fetch_activity_content'
+       case 'fetch_activity_content': {
+        // Podes adaptar conforme a tua lógica real
+        let details;
+        if ('activity_id' in input) {
+          details = await this.moodleClient.getActivityDetails({ activity_id: input.activity_id });
+        } else if ('course_name' in input && 'activity_name' in input) {
+          details = await this.moodleClient.getActivityDetails({
+            course_name: input.course_name,
+            activity_name: input.activity_name
+          });
+        } else {
+          throw new McpError(ErrorCode.InvalidParams, 'Invalid input for fetch_activity_content');
+        }
+        // Aqui podes buscar o conteúdo real da atividade, por exemplo:
+        // const content = await this.moodleClient.getPageModuleContentByUrl(details.url);
+        // return content;
+        return details; // Ou adapta para devolver o conteúdo real
+      }
+
       // Certifique-se que eles também retornam os dados brutos que o handler do SDK pode então stringificar ou envolver.
       default:
         console.warn(`handleToolInternal: Switch case not found for tool: ${toolName}`);
