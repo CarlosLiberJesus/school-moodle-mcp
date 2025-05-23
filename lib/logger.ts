@@ -20,29 +20,38 @@ export interface LoggerOptions {
     logLevel?: 'debug' | 'info' | 'warn' | 'error';
 }
 
-export function setupFileLogger(baseDir: string, options: LoggerOptions = {}) {
+export function setupFileLogger(logDirectoryPath: string, options: LoggerOptions = {}) {
+    // logDirectoryPath é o caminho completo para o diretório onde a pasta 'logs' deve ESTAR ou SER CRIADA
+    // Ex: E:\MCPs\school-moodle-mcp\logs
+
     const defaultOptions: Required<LoggerOptions> = {
-        logDir: path.join(baseDir, 'logs'),
+        logDir: logDirectoryPath, // Usar o caminho diretamente
         logFile: 'mcp_server.log',
         logLevel: getLogLevelFromEnv() || 'info'
     };
 
     const config = { ...defaultOptions, ...options };
+    // config.logDir será agora o 'projectRootLogsDir' que passamos.
 
     // Create log directory if it doesn't exist
     try {
+        // O config.logDir JÁ É o diretório final dos logs (ex: 'E:\MCPs\school-moodle-mcp\logs')
         if (!fs.existsSync(config.logDir)) {
+            originalConsoleLog('Logger: Attempting to create log directory:', config.logDir); // Modificado para clareza
             fs.mkdirSync(config.logDir, { recursive: true });
         }
     } catch (error) {
-        console.error(`Failed to create log directory: ${error}`);
+        console.error(`Failed to create log directory at ${config.logDir}: ${error}`); // Adicionar path ao log
         return;
     }
 
     // Create log file stream
     try {
-        logStream = fs.createWriteStream(path.join(config.logDir, config.logFile), { flags: 'a' });
+        const logFilePath = path.join(config.logDir, config.logFile); // Construir o caminho completo para o ficheiro
+        originalConsoleLog('Logger: Attempting to create log file at:', logFilePath); // Log do caminho do ficheiro
+        logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
         isFileLoggingEnabled = true;
+        originalConsoleLog('Logger: Successfully logging to file:', logFilePath); // Log de sucesso
     } catch (error) {
         console.error(`Failed to create log file: ${error}`);
         return;

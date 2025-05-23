@@ -38,9 +38,13 @@ export class ToolValidator {
       resource_file_url: z.string().url(),
       mimetype: z.string()
     }));
-    this.validators.set('get_activity_details', z.object({
-      activity_id: z.number().int().positive()
-    }));
+    this.validators.set('get_activity_details', z.union([
+      z.object({ activity_id: z.number().int().positive() }),
+      z.object({
+        course_name: z.string(),
+        activity_name: z.string()
+      })
+    ]));
   }
 
   public validateInput(toolName: string, inputData: any): ToolValidationResult {
