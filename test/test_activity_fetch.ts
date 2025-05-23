@@ -1,4 +1,4 @@
-import { MoodleMCP } from '../src/mcp_server';
+import { MoodleMCP } from '../src/mcp_server.js';
 
 async function testActivityFetch() {
   try {

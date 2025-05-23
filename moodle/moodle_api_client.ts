@@ -1,4 +1,5 @@
 // src/moodle/moodle_api_client.ts
+import { MOODLE_URL, MOODLE_TOKEN, NODE_ENV } from '../config/index.js';
 import axios, { AxiosInstance } from 'axios';
 import https from 'node:https';
 import * as cheerio from 'cheerio';
@@ -12,13 +13,9 @@ export class MoodleApiClient {
   private httpClient: AxiosInstance;
 
   constructor() {
-    const MOODLE_URL = process.env.MOODLE_URL;
-    const MOODLE_TOKEN = process.env.MOODLE_TOKEN;
-    const NODE_ENV = process.env.NODE_ENV || 'development';
 
     if (!MOODLE_URL || !MOODLE_TOKEN) {
-        // Este check é redundante se config/index.ts já faz exit, mas bom para clareza.
-        throw new Error("MoodleApiClient: MOODLE_URL or MOODLE_TOKEN is not configured.");
+      throw new Error("MoodleApiClient: MOODLE_URL or MOODLE_TOKEN is not configured.");
     }
     this.httpClient = axios.create({
       baseURL: MOODLE_URL,
@@ -27,7 +24,7 @@ export class MoodleApiClient {
         moodlewsrestformat: 'json',
       },
       httpsAgent: new https.Agent({
-        rejectUnauthorized: NODE_ENV === 'production', // Correto
+        rejectUnauthorized: NODE_ENV === 'production',
       }),
     });
   }
