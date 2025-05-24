@@ -7,14 +7,11 @@ import {
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js'; // Certifique-se que os tipos do SDK estão aqui
-import { z } from 'zod';
 import { MoodleApiClient } from './../moodle/moodle_api_client.js';
 import { toolDefinitions, ToolDefinitionSchema } from './../tools/tool_definitions.js';
 import { ToolValidator } from './../tools/tool_validators.js';
 import type { 
-    GetCourseContentsInput, 
-    GetPageModuleContentInput, 
-    GetResourceFileContentInput,
+    GetCourseContentsInput,
     MoodleModuleContent 
 } from './../moodle/moodle_types.js';
 import pkg from '../package.json' with { type: "json" };
@@ -37,6 +34,8 @@ export class MoodleMCP {
       version: this.version,
     };
 
+    type ToolMap = Record<string, Pick<ToolDefinitionSchema, "description" | "inputSchema" | "outputSchema">>;
+
     // As Capacidades do Servidor
     // A forma como 'tools' aqui lida com ListTools e CallTool.
     const serverCapabilities = {
@@ -50,7 +49,7 @@ export class MoodleMCP {
             outputSchema: td.outputSchema,
           };
           return acc;
-        }, {} as Record<string, { description: string; inputSchema: any; outputSchema: any }>),
+        }, {} as ToolMap),
       }
     };
 
@@ -62,8 +61,8 @@ export class MoodleMCP {
     this.server.onerror = (error) => {
       // Tentar obter mais detalhes do erro, se possível
       console.error('MCP Server Core Error:', error, JSON.stringify(error, null, 2));
-      if (error && (error as any).stack) {
-        console.error('MCP Server Core Error Stack:', (error as any).stack);
+      if (error instanceof Error && error.stack) {
+        console.error('MCP Server Core Error Stack:', error.stack);
       }
     };
 
@@ -72,7 +71,7 @@ export class MoodleMCP {
 
   private setupSdkRequestHandlers() {
     // Handler para ListTools
-    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    this.server.setRequestHandler(ListToolsRequestSchema, async (_request) => {
       console.info("SDK: Received ListToolsRequest"); // Removido JSON.stringify para brevidade
       const toolsForSdk = toolDefinitions.map(td => ({
         name: td.name,
@@ -86,6 +85,7 @@ export class MoodleMCP {
     // Handler para CallTool
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolInput = request.params.input || (request.params as any).arguments || {};
       
       console.info(`SDK: Received CallToolRequest for tool: '${toolName}' with input:`, toolInput);
@@ -104,21 +104,40 @@ export class MoodleMCP {
               text: JSON.stringify(resultData, null, 2),
           }],
         };
-      } catch (error: any) {
-          // ... (seu tratamento de erro, que parece bom)
-          if (error instanceof McpError) {
-              console.error(`MCP Error in SDK CallTool for ${toolName}:`, error.message, `(Code: ${error.code})`);
-              throw error;
+      } catch (error: unknown) {
+          if (error instanceof McpError) throw error;
+          // Type guard para Error
+          if (error && typeof error === "object" && "message" in error) {
+            console.error(
+              `MCP Error in SDK CallTool for ${toolName}:`,
+              (error as { message?: string }).message
+            );
+            throw new McpError(
+              ErrorCode.InternalError,
+              `MCP Error in SDK CallTool for ${toolName}: ${
+                (error as { message?: string }).message
+              }`
+            );
+          } else {
+            // fallback para erros não convencionais
+            console.error(
+              `MCP Error in SDK CallTool for ${toolName}:`,
+              error
+            );
+            throw new McpError(
+              ErrorCode.InternalError,
+              `MCP Error in SDK CallTool for ${toolName}: ${JSON.stringify(
+                error
+              )}`
+            );
           }
-          console.error(`Unexpected error in SDK CallTool for ${toolName}:`, error);
-          throw new McpError(ErrorCode.InternalError, `Unexpected error in SDK tool ${toolName}: ${error.message}`);
-      }
+        }
     });
   }
 
   // Renomeie o seu handler de lógica principal para evitar conflito de nomes
   // e para que ele possa ser chamado tanto pelo SDK quanto pelos seus testes.
-  private async handleToolInternal(toolName: string, input: Record<string, any>): Promise<any> {
+  private async handleToolInternal(toolName: string, input: Record<string, unknown>): Promise<unknown> {
     const toolDefinition = toolDefinitions.find(td => td.name === toolName);
     if (!toolDefinition) {
       // Este erro deve ser capturado antes pelo SDK se a ferramenta não foi listada,
@@ -142,7 +161,7 @@ export class MoodleMCP {
       case 'get_courses':
         return await this.moodleClient.getCourses();
       case 'get_course_contents': {
-        const { course_id } = validatedInput as { course_id: number };
+        const { course_id } = validatedInput as GetCourseContentsInput;
         return await this.moodleClient.getCourseContents(course_id);
       }
       case 'get_page_module_content': {
@@ -200,7 +219,7 @@ export class MoodleMCP {
                 // Este é um fallback, getPageModuleContentByUrl espera uma URL que retorna HTML direto.
                 // A URL do módulo de página pode já ser o que você precisa.
                 // Se 'contents' tem a URL do conteúdo real:
-                const contentEntry = contents.find((c: any) => c.type === 'content' || c.type === 'file'); // Moodle pode variar
+                const contentEntry = contents.find((c: MoodleModuleContent) => c.type === 'content' || c.type === 'file'); // Moodle pode variar
                 if (contentEntry && contentEntry.fileurl) {
                     return await this.moodleClient.getPageModuleContentByUrl(contentEntry.fileurl);
                 }
@@ -209,7 +228,7 @@ export class MoodleMCP {
             }
             return "[Conteúdo da página não pôde ser determinado]";
         } else if (modname === 'resource' && contents.length > 0) {
-            const resourceFile = contents.find((c: any) => c.type === 'file'); // Pode ser o primeiro, ou filtrar por tipo
+            const resourceFile = contents.find((c: MoodleModuleContent) => c.type === 'file'); // Pode ser o primeiro, ou filtrar por tipo
             if (resourceFile && resourceFile.fileurl && resourceFile.mimetype) {
                 return await this.moodleClient.getResourceFileContent(resourceFile.fileurl, resourceFile.mimetype);
             }
@@ -244,12 +263,12 @@ export class MoodleMCP {
   }
 
   // O seu método para testes pode continuar a existir e chamar handleToolInternal
-  async callToolForTests(toolName: string, input: Record<string, any>): Promise<any> {
+  async callToolForTests(toolName: string, input: Record<string, unknown>): Promise<unknown> {
     // Este método é para os seus testes locais, não para o SDK MCP.
     return await this.handleToolInternal(toolName, input);
   }
 
-  async run() {
+  async run(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.log(`Moodle MCP server v${this.version} running on stdio...`);

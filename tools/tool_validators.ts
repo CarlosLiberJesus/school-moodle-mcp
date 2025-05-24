@@ -1,11 +1,11 @@
 // tools/tool_validators.ts
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
-import { ToolDefinitionSchema } from './tool_definitions.js';
-import { z } from 'zod';
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 export interface ToolValidationResult {
   isValid: boolean;
   error?: McpError;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   validatedData?: any;
 }
 
@@ -27,43 +27,61 @@ export class ToolValidator {
 
   private initializeValidators() {
     // Definir validadores Zod para cada ferramenta
-    this.validators.set('get_courses', z.object({}));
-    this.validators.set('get_course_contents', z.object({
-      course_id: z.number().int().positive()
-    }));
-    this.validators.set('get_page_module_content', z.object({
-      page_content_url: z.string().url()
-    }));
-    this.validators.set('get_resource_file_content', z.object({
-      resource_file_url: z.string().url(),
-      mimetype: z.string()
-    }));
-    this.validators.set('get_activity_details', z.union([
-      z.object({ activity_id: z.number().int().positive() }),
+    this.validators.set("get_courses", z.object({}));
+    this.validators.set(
+      "get_course_contents",
       z.object({
-        course_name: z.string(),
-        activity_name: z.string()
+        course_id: z.number().int().positive(),
       })
-    ]));
-    this.validators.set('fetch_activity_content', z.union([
-      z.object({ activity_id: z.number().int().positive() }),
+    );
+    this.validators.set(
+      "get_page_module_content",
       z.object({
-        course_name: z.string(),
-        activity_name: z.string()
+        page_content_url: z.string().url(),
       })
-    ]));
+    );
+    this.validators.set(
+      "get_resource_file_content",
+      z.object({
+        resource_file_url: z.string().url(),
+        mimetype: z.string(),
+      })
+    );
+    this.validators.set(
+      "get_activity_details",
+      z.union([
+        z.object({ activity_id: z.number().int().positive() }),
+        z.object({
+          course_name: z.string(),
+          activity_name: z.string(),
+        }),
+      ])
+    );
+    this.validators.set(
+      "fetch_activity_content",
+      z.union([
+        z.object({ activity_id: z.number().int().positive() }),
+        z.object({
+          course_name: z.string(),
+          activity_name: z.string(),
+        }),
+      ])
+    );
   }
 
-  public validateInput(toolName: string, inputData: any): ToolValidationResult {
+  public validateInput(
+    toolName: string,
+    inputData: unknown
+  ): ToolValidationResult {
     const validator = this.validators.get(toolName);
-    
+
     if (!validator) {
       return {
         isValid: false,
         error: new McpError(
           ErrorCode.MethodNotFound,
           `Validator not found for tool: ${toolName}`
-        )
+        ),
       };
     }
 
@@ -71,19 +89,20 @@ export class ToolValidator {
       const result = validator.parse(inputData);
       return {
         isValid: true,
-        validatedData: result
+        validatedData: result,
       };
     } catch (error) {
       return {
         isValid: false,
         error: new McpError(
           ErrorCode.InvalidParams,
-          error instanceof Error ? error.message : 'Invalid input data'
-        )
+          error instanceof Error ? error.message : "Invalid input data"
+        ),
       };
     }
   }
-
+  /*
+ ACHO QUE Não Necessito
   public validateSchema(toolDefinition: ToolDefinitionSchema): boolean {
     try {
       // Aqui podemos adicionar validação do schema JSON
@@ -95,4 +114,5 @@ export class ToolValidator {
       return false;
     }
   }
+*/
 }

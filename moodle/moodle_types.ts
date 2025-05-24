@@ -4,7 +4,7 @@ export interface MoodleCourse {
   fullname: string;
   shortname: string;
   // Adicione mais propriedades conforme necessário
-  [key: string]: any; // Para flexibilidade com outras propriedades não explicitamente definidas
+  [key: string]: unknown; // Para flexibilidade com outras propriedades não explicitamente definidas
 }
 
 export interface MoodleModuleContent {
@@ -14,7 +14,7 @@ export interface MoodleModuleContent {
   filesize?: string; // Ou number, se for consistente
   fileurl?: string;
   mimetype?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface MoodleModule {
@@ -27,7 +27,8 @@ export interface MoodleModule {
   description?: string;
   visible?: number;
   contents?: MoodleModuleContent[];
-  [key: string]: any;
+  intro?: string;
+  [key: string]: unknown;
 }
 
 export interface MoodleSection {
@@ -37,7 +38,7 @@ export interface MoodleSection {
   summaryformat: number;
   visible: number;
   modules: MoodleModule[];
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Tipos para inputs/outputs das tools (poderiam estar em tools/tool_types.ts)
@@ -59,3 +60,10 @@ export interface GetResourceFileContentInput {
   mimetype: string;
 }
 export type GetResourceFileContentOutput = string | null; // Texto extraído ou null
+
+export interface GetActivityDetailsInput {
+  activity_id?: number;
+  course_name?: string;
+  activity_name?: string;
+}
+export type GetActivityDetailsOutput = MoodleModule | null;
