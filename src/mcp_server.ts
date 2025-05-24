@@ -18,6 +18,7 @@ import type {
     MoodleModuleContent 
 } from './../moodle/moodle_types.js';
 import pkg from '../package.json' with { type: "json" };
+import * as cheerio from 'cheerio';
 
 
 export class MoodleMCP {
@@ -37,24 +38,19 @@ export class MoodleMCP {
     };
 
     // As Capacidades do Servidor
-    // A forma como 'tools' aqui é preenchido é CRUCIAL para como o SDK
-    // lida com ListTools e CallTool.
+    // A forma como 'tools' aqui lida com ListTools e CallTool.
     const serverCapabilities = {
       capabilities: {
-        resources: {}, // Deixe como está por agora
-        // AQUI é o ponto chave.
+        resources: {}, 
         // Se o SDK @modelcontextprotocol/sdk espera um array de definições de ferramentas aqui
-        // para que ele próprio trate o ListTools, então deveria ser:
         tools: toolDefinitions.reduce((acc, td) => {
           acc[td.name] = {
             description: td.description,
             inputSchema: td.inputSchema,
+            outputSchema: td.outputSchema,
           };
           return acc;
-        }, {} as Record<string, { description: string; inputSchema: any }>),
-        // Se o SDK não usa isto para ListTools e depende 100% do seu handler
-        // ListToolsRequestSchema, então isto poderia ser um objeto vazio:
-        // tools: {}, // <-- TENTATIVA 2: Deixar vazio e confiar nos handlers abaixo
+        }, {} as Record<string, { description: string; inputSchema: any; outputSchema: any }>),
       }
     };
 
@@ -163,24 +159,82 @@ export class MoodleMCP {
         // ...
         return await this.moodleClient.getActivityDetails(validatedInput);
       }
-       case 'fetch_activity_content': {
-        // Podes adaptar conforme a tua lógica real
-        let details;
-        if ('activity_id' in input) {
-          details = await this.moodleClient.getActivityDetails({ activity_id: input.activity_id });
-        } else if ('course_name' in input && 'activity_name' in input) {
-          details = await this.moodleClient.getActivityDetails({
-            course_name: input.course_name,
-            activity_name: input.activity_name
-          });
+      case 'fetch_activity_content': {
+        const { activity_id, course_name, activity_name } = validatedInput;
+        let activityDetails;
+
+        if (activity_id !== undefined) {
+            activityDetails = await this.moodleClient.getActivityDetails({ activity_id });
+        } else if (course_name && activity_name) {
+            activityDetails = await this.moodleClient.getActivityDetails({ course_name, activity_name });
         } else {
-          throw new McpError(ErrorCode.InvalidParams, 'Invalid input for fetch_activity_content');
+            throw new McpError(ErrorCode.InvalidParams, 'Insufficient parameters for fetch_activity_content');
         }
-        // Aqui podes buscar o conteúdo real da atividade, por exemplo:
-        // const content = await this.moodleClient.getPageModuleContentByUrl(details.url);
-        // return content;
-        return details; // Ou adapta para devolver o conteúdo real
-      }
+
+        if (!activityDetails) {
+            throw new McpError(ErrorCode.InvalidParams, 'Activity details not found for fetching content.');
+        }
+
+        const modname = activityDetails.modname?.toLowerCase();
+        const contents = activityDetails.contents || [];
+
+        console.debug('DEBUG fetch_activity_content: activityDetails received:', JSON.stringify(activityDetails, null, 2));
+
+        if (modname === 'page') {
+            // Encontrar a URL correta para o conteúdo da página
+            // A 'url' no objeto do módulo 'page' geralmente é a view.php,
+            // mas 'contents' pode ter um 'fileurl' mais direto se o módulo for estruturado assim.
+            // Para 'mod_page', o 'intro' (descrição) PODE ser o conteúdo principal se for simples,
+            // ou pode haver um 'contentfiles' dentro de 'contents'.
+            // Se 'activityDetails.contents' tiver um item com type 'content' e 'fileurl', use-o.
+            // Se não, e a 'activityDetails.url' for a melhor aposta:
+            const pageViewUrl = activityDetails.url; // URL para view.php?id=X
+            if (pageViewUrl) {
+                // Se a descrição já contiver o conteúdo (comum em 'page')
+                if (activityDetails.description && typeof activityDetails.description === 'string') {
+                    // Você pode querer limpar o HTML da descrição aqui
+                    const $ = cheerio.load(activityDetails.description);
+                    return $('body').text().trim() || "[Descrição da página como conteúdo]";
+                }
+                // Ou se 'contents' tiver o conteúdo (mais complexo para 'page')
+                // Este é um fallback, getPageModuleContentByUrl espera uma URL que retorna HTML direto.
+                // A URL do módulo de página pode já ser o que você precisa.
+                // Se 'contents' tem a URL do conteúdo real:
+                const contentEntry = contents.find((c: any) => c.type === 'content' || c.type === 'file'); // Moodle pode variar
+                if (contentEntry && contentEntry.fileurl) {
+                    return await this.moodleClient.getPageModuleContentByUrl(contentEntry.fileurl);
+                }
+                // Fallback para a URL principal do módulo se a estrutura acima não for encontrada
+                return await this.moodleClient.getPageModuleContentByUrl(pageViewUrl);
+            }
+            return "[Conteúdo da página não pôde ser determinado]";
+        } else if (modname === 'resource' && contents.length > 0) {
+            const resourceFile = contents.find((c: any) => c.type === 'file'); // Pode ser o primeiro, ou filtrar por tipo
+            if (resourceFile && resourceFile.fileurl && resourceFile.mimetype) {
+                return await this.moodleClient.getResourceFileContent(resourceFile.fileurl, resourceFile.mimetype);
+            }
+            return "[Ficheiro do recurso não encontrado ou mimetype em falta]";
+        } else if (modname === 'assign' && activityDetails.intro) {
+            // Para trabalhos (assign), o 'intro' (descrição) é o conteúdo principal.
+            // Limpar HTML se necessário
+            const $ = cheerio.load(activityDetails.intro);
+            return $('body').text().trim() || "[Descrição do trabalho]";
+        }
+        // Adicione mais 'else if' para outros modnames (quiz, forum, etc.) se quiser extrair o seu "conteúdo" principal
+        
+        // Se não for nenhum dos tipos conhecidos para extração de conteúdo direto,
+        // talvez retornar a descrição geral ou um aviso.
+        if (activityDetails.description) { // Moodle 4.x pode usar 'description'
+            const $ = cheerio.load(activityDetails.description);
+            return $('body').text().trim() || "[Descrição da atividade]";
+        }
+        if (activityDetails.intro) { // Moodle mais antigo pode usar 'intro'
+            const $ = cheerio.load(activityDetails.intro);
+            return $('body').text().trim() || "[Introdução da atividade]";
+        }
+
+        return `[Conteúdo não extraível diretamente para modname: ${modname}. Detalhes da atividade retornados.]`;
+    }
 
       // Certifique-se que eles também retornam os dados brutos que o handler do SDK pode então stringificar ou envolver.
       default:
