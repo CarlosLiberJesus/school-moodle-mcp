@@ -208,7 +208,12 @@ export class MoodleMCP {
 
         // Extrair informações cruciais dos detalhes base
         const cmid = baseActivityDetails.id; // Course Module ID
-        const effectiveCourseId = baseActivityDetails.course_id_provided || baseActivityDetails.course; // Garantir que temos o course_id
+        const effectiveCourseId = baseActivityDetails.course || course_id; // Garantir que temos o course_id
+        if (!effectiveCourseId) {
+            throw new McpError(ErrorCode.InternalError, 'Could not determine course_id for activity');
+        }
+        console.debug(`Debug courseId: effectiveCourseId=${effectiveCourseId}, baseActivityDetails.course=${baseActivityDetails.course}, course_id=${course_id}`);
+
         const modname = baseActivityDetails.modname?.toLowerCase();
         const instanceId = baseActivityDetails.instance; // ID da instância do módulo (e.g., ID na tabela 'assign')
 

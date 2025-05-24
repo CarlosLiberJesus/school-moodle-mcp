@@ -543,7 +543,7 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
               description: "The name of the activity to fetch content for.",
             },
           },
-          required: ["course_name", "activity_name"],
+          required: ["course_id", "activity_name"],
         },
       ],
     },
