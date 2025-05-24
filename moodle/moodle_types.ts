@@ -1,17 +1,15 @@
-// src/moodle/moodle_types.ts
 export interface MoodleCourse {
   id: number;
   fullname: string;
   shortname: string;
-  // Adicione mais propriedades conforme necessário
-  [key: string]: unknown; // Para flexibilidade com outras propriedades não explicitamente definidas
+  [key: string]: unknown;
 }
 
 export interface MoodleModuleContent {
   type: string;
   filename?: string;
   filepath?: string;
-  filesize?: string; // Ou number, se for consistente
+  filesize?: string | number;
   fileurl?: string;
   mimetype?: string;
   [key: string]: unknown;
@@ -28,6 +26,7 @@ export interface MoodleModule {
   visible?: number;
   contents?: MoodleModuleContent[];
   intro?: string;
+  introfiles?: MoodleModuleContent[];
   [key: string]: unknown;
 }
 
@@ -41,7 +40,31 @@ export interface MoodleSection {
   [key: string]: unknown;
 }
 
-// Tipos para inputs/outputs das tools (poderiam estar em tools/tool_types.ts)
+// Assignment
+export interface MoodleAssignment {
+  id: number;
+  name: string;
+  intro?: string;
+  introfiles?: MoodleModuleContent[];
+  [key: string]: unknown;
+}
+
+// Forum Discussion
+export interface MoodleForumDiscussion {
+  id: number;
+  name: string;
+  userfullname: string;
+  numreplies: number;
+  [key: string]: unknown;
+}
+
+// Forum Data (resposta da API)
+export interface MoodleForumData {
+  discussions: MoodleForumDiscussion[];
+  [key: string]: unknown;
+}
+
+// Inputs/outputs das tools
 export interface GetCoursesInput {}
 export type GetCoursesOutput = MoodleCourse[];
 
@@ -53,13 +76,13 @@ export type GetCourseContentsOutput = MoodleSection[];
 export interface GetPageModuleContentInput {
   page_content_url: string;
 }
-export type GetPageModuleContentOutput = string; // HTML ou texto extraído
+export type GetPageModuleContentOutput = string;
 
 export interface GetResourceFileContentInput {
   resource_file_url: string;
   mimetype: string;
 }
-export type GetResourceFileContentOutput = string | null; // Texto extraído ou null
+export type GetResourceFileContentOutput = string | null;
 
 export interface GetActivityDetailsInput {
   activity_id?: number;
@@ -67,3 +90,15 @@ export interface GetActivityDetailsInput {
   activity_name?: string;
 }
 export type GetActivityDetailsOutput = MoodleModule | null;
+
+// Assignment API response
+export interface AssignmentsResponse {
+  courses?: Array<{
+    id: number;
+    assignments: MoodleAssignment[];
+  }>;
+  assignments?: Array<{
+    id: number;
+    assignments: MoodleAssignment[];
+  }>;
+}

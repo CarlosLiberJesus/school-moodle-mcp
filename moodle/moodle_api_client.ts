@@ -10,6 +10,8 @@ import type {
   MoodleCourse,
   MoodleModule,
   MoodleSection,
+  MoodleAssignment,
+  MoodleForumData,
 } from "./moodle_types.js";
 import { Buffer } from "node:buffer";
 // Importar pdf-parse e mammoth quando forem usados
@@ -126,24 +128,40 @@ export class MoodleApiClient {
     return sections;
   }
 
-  async getPageModuleContentByUrl(pageUrl: string): Promise<string | null> {
+  // Esta função é para URLs que apontam DIRETAMENTE para conteúdo HTML,
+  // idealmente URLs de 'pluginfile.php' que já contêm um token.
+  // NÃO é para URLs genéricas de 'view.php?id=X' que requerem sessão de browser.
+  async getPageModuleContentByUrl(pageContentFileUrl: string): Promise<string> {
     try {
-      console.info(`Attempting to fetch page content from: ${pageUrl}`);
-      const response = await axios.get(pageUrl, {
+      console.info(
+        `Attempting to fetch HTML content from: ${pageContentFileUrl}`
+      );
+
+      // As URLs de pluginfile.php retornadas pelas APIs Moodle geralmente JÁ contêm um token.
+      // Portanto, um GET direto para essa URL deve funcionar.
+      // Não devemos usar this.httpClient aqui, pois ele adicionaria o wstoken aos params,
+      // o que não é o esperado para pluginfile.php (que espera o token na própria URL).
+      const response = await axios.get(pageContentFileUrl, {
+        // Não é necessário responseType: 'arraybuffer' para HTML
         httpsAgent: new https.Agent({
-          rejectUnauthorized: process.env.NODE_ENV === "production",
+          rejectUnauthorized: NODE_ENV === "production",
         }),
+        // Se precisares forçar o token (SE pageContentFileUrl não o tiver e for um pluginfile.php):
+        // params: { token: MOODLE_TOKEN } // Mas geralmente não é necessário se a URL já o tem.
       });
 
-      const $ = cheerio.load(response.data as string);
+      const $ = cheerio.load(response.data);
+      // Tenta ser mais específico se souberes a estrutura do conteúdo da página Moodle
+      // Por exemplo, o conteúdo real pode estar dentro de um div com uma classe específica.
       const mainContentSelectors = [
-        'div[role="main"]',
+        "div.box.py-3.generaltable", // Comum para o conteúdo de uma 'page' quando descarregado
+        "div.no-overflow", // Outro seletor comum
+        'div[role="main"]', // Mais genérico
         "#region-main",
-        ".course-content",
-        "div.page-content",
+        "div.page-content", // Se for um HTML de página completo
         "article",
         "main",
-        "body",
+        "body", // Último recurso
       ];
       let extractedText = "";
       for (const selector of mainContentSelectors) {
@@ -157,29 +175,21 @@ export class MoodleApiClient {
         }
       }
       return extractedText || ($("body").text()?.trim() ?? "");
-    } catch (error: unknown) {
+    } catch (error) {
+      console.error(
+        `MoodleApiClient: Error in getPageModuleContentByUrl for ${pageContentFileUrl}:`,
+        error
+      );
       if (error instanceof McpError) throw error;
-      // Type guard para Error
       if (error && typeof error === "object" && "message" in error) {
-        console.error(
-          `Could not retrieve content from page URL: ${pageUrl}:`,
-          (error as { message?: string }).message
-        );
         throw new McpError(
           ErrorCode.InternalError,
-          `Could not retrieve content from page URL: ${pageUrl}: ${
-            (error as { message?: string }).message
-          }`
+          `Could not retrieve content from page URL: ${pageContentFileUrl}: ${error.message}`
         );
       } else {
-        // fallback para erros não convencionais
-        console.error(
-          `Could not retrieve content from page URL: ${pageUrl}:`,
-          error
-        );
         throw new McpError(
           ErrorCode.InternalError,
-          `Could not retrieve content from page URL: ${pageUrl}: ${JSON.stringify(
+          `Could not retrieve content from page URL: ${pageContentFileUrl}: ${JSON.stringify(
             error
           )}`
         );
@@ -188,27 +198,26 @@ export class MoodleApiClient {
   }
 
   async getResourceFileContent(
-    fileUrl: string,
+    resourceFileUrl: string,
     mimetype: string
-  ): Promise<string | null> {
+  ): Promise<string> {
     console.info(
-      `Attempting to fetch file content from: ${fileUrl} (MIME: ${mimetype})`
+      `Attempting to fetch file content from: ${resourceFileUrl} (MIME: ${mimetype})`
     );
     try {
-      const response = await axios.get(fileUrl, {
-        responseType: "arraybuffer",
+      // Semelhante a getPageModuleContentByUrl, resourceFileUrl (de pluginfile.php)
+      // geralmente já contém o token.
+      const response = await axios.get(resourceFileUrl, {
+        responseType: "arraybuffer", // Importante para ficheiros binários
         httpsAgent: new https.Agent({
-          rejectUnauthorized: process.env.NODE_ENV === "production",
+          rejectUnauthorized: NODE_ENV === "production",
         }),
+        // params: { token: MOODLE_TOKEN } // Apenas se resourceFileUrl não tiver token e precisar.
       });
 
       const fileBuffer = Buffer.from(response.data);
 
       if (mimetype.includes("pdf")) {
-        // TODO: Implementar pdf-parse
-        // Exemplo:
-        // const data = await pdf(fileBuffer);
-        // return data.text;
         console.warn("PDF parsing not yet implemented.");
         return "[Conteúdo PDF não processado devido à falta de parser]";
       } else if (
@@ -217,10 +226,6 @@ export class MoodleApiClient {
         )
       ) {
         // DOCX
-        // TODO: Implementar mammoth.js
-        // Exemplo:
-        // const { value } = await mammoth.extractRawText({ buffer: fileBuffer });
-        // return value;
         console.warn("DOCX parsing not yet implemented.");
         return "[Conteúdo DOCX não processado devido à falta de parser]";
       } else if (mimetype.startsWith("text/")) {
@@ -231,29 +236,21 @@ export class MoodleApiClient {
         );
         return `[Conteúdo não extraível para mimetype: ${mimetype}]`;
       }
-    } catch (error: unknown) {
+    } catch (error) {
+      console.error(
+        `MoodleApiClient: Error in getResourceFileContent for ${resourceFileUrl}:`,
+        error
+      );
       if (error instanceof McpError) throw error;
-      // Type guard para Error
       if (error && typeof error === "object" && "message" in error) {
-        console.error(
-          `Could not retrieve content from file URL: ${fileUrl}:`,
-          (error as { message?: string }).message
-        );
         throw new McpError(
           ErrorCode.InternalError,
-          `Could not retrieve content from page file Url: ${fileUrl}: ${
-            (error as { message?: string }).message
-          }`
+          `Could not retrieve content from file URL: ${resourceFileUrl}: ${error.message}`
         );
       } else {
-        // fallback para erros não convencionais
-        console.error(
-          `Could not retrieve content from file Url: ${fileUrl}:`,
-          error
-        );
         throw new McpError(
           ErrorCode.InternalError,
-          `Could not retrieve content from file Url: ${fileUrl}: ${JSON.stringify(
+          `Could not retrieve content from file URL: ${resourceFileUrl}: ${JSON.stringify(
             error
           )}`
         );
@@ -264,99 +261,210 @@ export class MoodleApiClient {
   async getActivityDetails(
     params: GetActivityDetailsInput
   ): Promise<GetActivityDetailsOutput> {
-    // Ajuste o tipo de retorno para o objeto do módulo Moodle
+    // ... (a tua implementação atual para getActivityDetails é boa, usando this.moodleRequest)
+    // Lembra-te de garantir que o output desta função sempre inclui o 'course_id' do curso da atividade.
+    // Por exemplo, quando usas core_course_get_course_module:
+    // if (moduleDetails && moduleDetails.cm) {
+    //     return { ...moduleDetails.cm, course_id_resolved: moduleDetails.cm.course };
+    // }
+    // E quando procuras por course_id e activity_name:
+    // if (activityDetails) {
+    //     return { ...activityDetails, course_id_resolved: params.course_id };
+    // }
+    // (Usar um nome consistente como 'course_id_resolved' ou apenas 'course' se o objeto cm já o tiver como 'course')
+    // A tua versão atual já faz algo semelhante com `moduleDetails.cm` e `{...activityDetails, course_id_provided: params.course_id }`
+    // O importante é que o `fetch_activity_content` possa aceder a este ID de curso de forma fiável a partir do resultado de `getActivityDetails`.
     try {
       if (params.activity_id !== undefined) {
-        // Temos cmid. Para obter os detalhes do módulo, incluindo o course_id,
-        // a melhor API do Moodle é core_course_get_course_module.
         const moduleDetails = await this.moodleRequest<{ cm: MoodleModule }>(
           "core_course_get_course_module",
           { cmid: params.activity_id }
         );
-
-        // A resposta de core_course_get_course_module já é rica.
-        // Pode precisar de alguma adaptação para corresponder ao formato que a get_activity_details retornava antes
-        // se o formato exato for importante para o LLM.
-        // Importante: moduleDetails.cm.course deve dar o course_id
         if (moduleDetails && moduleDetails.cm) {
-          // Adicionar o course_id ao objeto retornado se não estiver já no formato esperado
-          // Exemplo: return { ...moduleDetails.cm, course_id: moduleDetails.cm.course };
-          return moduleDetails.cm; // moduleDetails.cm contém a informação do módulo
+          // moduleDetails.cm.course já é o course_id
+          return moduleDetails.cm;
         } else {
           throw new McpError(
-            ErrorCode.InvalidParams,
+            ErrorCode.MethodNotFound,
             `Activity with cmid ${params.activity_id} not found or invalid response from Moodle.`
           );
         }
       }
 
       if (params.course_id !== undefined && params.activity_name) {
-        // Temos course_id e activity_name.
-        // 1. Obter os conteúdos do curso.
         const sections = await this.getCourseContents(params.course_id);
         if (!sections || sections.length === 0) {
           throw new McpError(
-            ErrorCode.InvalidParams,
+            ErrorCode.MethodNotFound,
             `No sections found for course ID ${params.course_id}.`
           );
         }
-
-        // 2. Procurar a atividade pelo nome dentro das secções/módulos.
-        let activityDetails = null;
+        let foundActivity = null;
         for (const section of sections) {
           if (section.modules) {
-            const foundModule = section.modules.find(
-              (module) =>
-                module.name &&
-                module.name
+            const module = section.modules.find(
+              (m) =>
+                m.name &&
+                m.name
                   .toLowerCase()
-                  .includes(params.activity_name!.toLowerCase()) // activity_name é garantido aqui pelo Zod
+                  .includes(params.activity_name!.toLowerCase())
             );
-            if (foundModule) {
-              activityDetails = foundModule;
-              // Adicionar course_id ao resultado se não estiver lá, para consistência
-              // activityDetails.course_id = params.course_id; // Ou garantir que o outputSchema sempre o inclua
+            if (module) {
+              foundActivity = module;
               break;
             }
           }
         }
-
-        if (!activityDetails) {
+        if (!foundActivity) {
           throw new McpError(
-            ErrorCode.InvalidParams,
+            ErrorCode.MethodNotFound,
             `Activity "${params.activity_name}" not found in course ID ${params.course_id}.`
           );
         }
-        // Importante: Adicionar o course_id ao objeto retornado, pois foi um input
-        return { ...activityDetails, course_id_provided: params.course_id }; // Ou uma forma mais estruturada
+        // Adicionar explicitamente o course_id aqui, pois o objeto do módulo de getCourseContents não o tem.
+        return { ...foundActivity, course: params.course_id }; // Usar 'course' para consistência com o output de core_course_get_course_module
       }
 
       throw new McpError(
         ErrorCode.InvalidParams,
         "Insufficient parameters for get_activity_details. Provide activity_id OR (course_id AND activity_name)."
       );
-    } catch (error: unknown) {
+    } catch (error) {
+      // Tratamento de erros genérico no final
+      console.error(
+        `MoodleApiClient: Error in getActivityDetails with params ${JSON.stringify(
+          params
+        )}:`,
+        error
+      );
       if (error instanceof McpError) throw error;
-      // Type guard para Error
       if (error && typeof error === "object" && "message" in error) {
-        console.error(
-          `Failed to retrieve activity details:`,
-          (error as { message?: string }).message
-        );
         throw new McpError(
           ErrorCode.InternalError,
-          `Failed to retrieve activity details: ${
-            (error as { message?: string }).message
-          }`
+          `Failed to retrieve activity details: ${error.message}`
         );
       } else {
-        // fallback para erros não convencionais
-        console.error(`Failed to retrieve activity details:`, error);
         throw new McpError(
           ErrorCode.InternalError,
           `Failed to retrieve activity details: ${JSON.stringify(error)}`
         );
       }
     }
+  }
+
+  async getAssignmentDetails(
+    courseId: number,
+    assignmentInstanceId: number
+  ): Promise<MoodleAssignment> {
+    console.info(
+      `Fetching ALL assignments for course ${courseId} to find instance ${assignmentInstanceId}`
+    );
+
+    // Tipo para a resposta de mod_assign_get_assignments
+    // Ajusta conforme a estrutura real da tua API Moodle se necessário,
+    // mas esta é uma estrutura comum.
+    type MoodleAssignmentsResponse = {
+      courses: Array<{
+        id: number; // course id
+        assignments: Array<{
+          id: number; // <<< ESTE é o ID da INSTÂNCIA do assignment (e.g., 27)
+          cmid: number; // Course Module ID (e.g., 150)
+          course: number; // course id (e.g., 6)
+          name: string;
+          intro: string;
+          introformat: number;
+          introfiles: Array<Record<string, unknown>>;
+          // ... outros campos ...
+        }>;
+      }>;
+      warnings?: unknown[];
+    };
+
+    const response = await this.moodleRequest<MoodleAssignmentsResponse>(
+      "mod_assign_get_assignments",
+      {
+        courseids: [courseId], // Apenas o ID do curso
+      }
+    );
+
+    if (response && response.courses) {
+      const courseData = response.courses.find((c) => c.id === courseId);
+      if (courseData && courseData.assignments) {
+        const specificAssignment = courseData.assignments.find(
+          (a) => a.id === assignmentInstanceId // Filtra pelo ID da INSTÂNCIA do assignment
+        );
+        if (specificAssignment) {
+          console.debug(
+            `Found specific assignment: ${JSON.stringify(
+              specificAssignment,
+              null,
+              2
+            )}`
+          );
+          // Ensure introfiles has the required 'type' property for MoodleModuleContent[]
+          const introfilesWithType = (specificAssignment.introfiles || []).map(
+            (file: Record<string, unknown>) => ({
+              type: typeof file.type === "string" ? file.type : "file",
+              ...file,
+            })
+          );
+          return {
+            ...specificAssignment,
+            introfiles: introfilesWithType,
+          };
+        } else {
+          console.warn(
+            `Assignment with instance ID ${assignmentInstanceId} not found in the list of assignments for course ${courseId}. Assignments received: ${JSON.stringify(
+              courseData.assignments,
+              null,
+              2
+            )}`
+          );
+        }
+      } else {
+        console.warn(
+          `No assignments found for course ${courseId} in the response. Response: ${JSON.stringify(
+            response,
+            null,
+            2
+          )}`
+        );
+      }
+    } else {
+      console.warn(
+        `Unexpected response structure from mod_assign_get_assignments for course ${courseId}. Response: ${JSON.stringify(
+          response,
+          null,
+          2
+        )}`
+      );
+    }
+
+    // Se não encontrou após a filtragem
+    throw new McpError(
+      ErrorCode.MethodNotFound, // Usar NotFound se o recurso específico não foi encontrado
+      `Assignment with instance ID ${assignmentInstanceId} not found in course ${courseId} (or response was not as expected).`
+    );
+  }
+
+  async getForumDiscussions(
+    forumInstanceId: number,
+    options: {
+      sortby?: string;
+      sortdirection?: string;
+      page?: number;
+      perpage?: number;
+    } = { sortby: "timedesc", page: 0, perpage: 5 }
+  ): Promise<MoodleForumData> {
+    console.info(`Fetching discussions for forum instance ${forumInstanceId}`);
+    // Chamar 'mod_forum_get_forum_discussions' ou 'mod_forum_get_forum_discussions_paginated'
+    // O 'forumInstanceId' é o 'id' do fórum na tabela 'forum', que é o `baseActivityDetails.instance`
+    return this.moodleRequest("mod_forum_get_forum_discussions", {
+      forumid: forumInstanceId,
+      sortby: options.sortby || "timemodified", // ou 'lastpost' ou 'created'
+      sortdirection: options.sortdirection || "DESC",
+      page: options.page || 0,
+      perpage: options.perpage || 5,
+    });
   }
 }

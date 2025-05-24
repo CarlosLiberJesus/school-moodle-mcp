@@ -419,7 +419,6 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
         {
           properties: {
             activity_id: {
-              // Este é o cmid (Course Module ID)
               type: "integer",
               description:
                 "The Course Module ID (cmid) of the activity to retrieve details for. This is the most direct way to get an activity.",
@@ -445,7 +444,6 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
       ],
     },
     outputSchema: {
-      // NOVO
       type: "object",
       properties: {
         id: {
@@ -520,7 +518,7 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
   {
     name: "fetch_activity_content",
     description:
-      "Fetches the content of an activity in a single step, handling both page and resource types.",
+      "Fetches the detailed content of a specific Moodle activity (like assignment description, page text, resource file link, or URL details). Provides main text and a list of associated files.",
     inputSchema: {
       type: "object",
       oneOf: [
@@ -535,9 +533,10 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
         },
         {
           properties: {
-            course_name: {
-              type: "string",
-              description: "The name of the course containing the activity.",
+            course_id: {
+              type: "integer",
+              description:
+                "The ID of the course where the activity is located. Obtain this using the 'get_courses' tool first if you only have the course name.",
             },
             activity_name: {
               type: "string",
@@ -551,29 +550,70 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     outputSchema: {
       type: "object",
       properties: {
+        activityName: {
+          type: "string",
+          description: "The name of the activity.",
+        },
+        activityType: {
+          type: "string",
+          description: "The Moodle module type (e.g., assign, page, resource).",
+        },
+        activityUrl: {
+          type: "string",
+          format: "url",
+          description: "The main URL to view the activity in Moodle.",
+        },
         contentType: {
           type: "string",
-          enum: ["text", "html_cleaned", "file_placeholder", "error"],
+          enum: [
+            "text",
+            "html_cleaned",
+            "file_placeholder",
+            "url_details",
+            "error",
+            "empty",
+          ],
+          description: "The nature of the main content provided.",
         },
         content: {
           type: "string",
-          description: "The main textual content or a message.",
+          description:
+            "The main textual content extracted from the activity (e.g., assignment description, cleaned page text, resource placeholder message, URL details). If an error occurred, this field contains the error message.",
         },
         files: {
           type: "array",
+          description:
+            "A list of files associated with this activity (e.g., attachments to an assignment, the resource file itself).",
           items: {
             type: "object",
             properties: {
-              filename: { type: "string" },
-              fileurl: { type: "string", format: "url" },
-              mimetype: { type: "string" },
+              filename: {
+                type: "string",
+                description: "The name of the file.",
+              },
+              fileurl: {
+                type: "string",
+                format: "url",
+                description:
+                  "The direct URL to access/download the file (may require Moodle session/token).",
+              },
+              mimetype: {
+                type: "string",
+                description: "The MIME type of the file.",
+              },
             },
+            required: ["filename", "fileurl", "mimetype"],
           },
-          description:
-            "List of associated files, if any (e.g., attachments to an assignment).",
         },
       },
-      required: ["contentType", "content"],
+      required: [
+        "activityName",
+        "activityType",
+        "activityUrl",
+        "contentType",
+        "content",
+        "files",
+      ],
     },
   },
 ];

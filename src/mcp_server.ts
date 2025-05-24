@@ -12,11 +12,11 @@ import { toolDefinitions, ToolDefinitionSchema } from './../tools/tool_definitio
 import { ToolValidator } from './../tools/tool_validators.js';
 import type { 
     GetCourseContentsInput,
-    MoodleModuleContent 
+    MoodleModuleContent,
+    MoodleForumDiscussion
 } from './../moodle/moodle_types.js';
 import pkg from '../package.json' with { type: "json" };
 import * as cheerio from 'cheerio';
-
 
 export class MoodleMCP {
   private server: Server;
@@ -189,80 +189,261 @@ export class MoodleMCP {
         return await this.moodleClient.getActivityDetails(validatedInput);
       }
       case 'fetch_activity_content': {
-        const { activity_id, course_id, activity_name } = validatedInput;
-        let activityDetails;
+        const { activity_id, course_id, activity_name } = validatedInput as { activity_id?: number; course_id?: number; activity_name?: string };
+        let baseActivityDetails; // Detalhes básicos do módulo
 
-        if (activity_id !== undefined) {
-            activityDetails = await this.moodleClient.getActivityDetails({ activity_id });
+        // Passo 1: Obter os detalhes básicos da atividade (cmid, course_id, modname, instance, etc.)
+        // Usando a lógica já refinada de get_activity_details
+        if (activity_id !== undefined) { // activity_id é o cmid
+            baseActivityDetails = await this.moodleClient.getActivityDetails({ activity_id });
         } else if (course_id && activity_name) {
-            activityDetails = await this.moodleClient.getActivityDetails({ course_id, activity_name });
+            baseActivityDetails = await this.moodleClient.getActivityDetails({ course_id, activity_name });
         } else {
-            throw new McpError(ErrorCode.InvalidParams, 'Insufficient parameters for fetch_activity_content');
+            throw new McpError(ErrorCode.InvalidParams, 'Insufficient parameters for fetch_activity_content. Provide activity_id OR (course_id AND activity_name).');
         }
 
-        if (!activityDetails) {
+        if (!baseActivityDetails) {
             throw new McpError(ErrorCode.InvalidParams, 'Activity details not found for fetching content.');
         }
 
-        const modname = activityDetails.modname?.toLowerCase();
-        const contents = activityDetails.contents || [];
+        // Extrair informações cruciais dos detalhes base
+        const cmid = baseActivityDetails.id; // Course Module ID
+        const effectiveCourseId = baseActivityDetails.course_id_provided || baseActivityDetails.course; // Garantir que temos o course_id
+        const modname = baseActivityDetails.modname?.toLowerCase();
+        const instanceId = baseActivityDetails.instance; // ID da instância do módulo (e.g., ID na tabela 'assign')
 
-        console.debug('DEBUG fetch_activity_content: activityDetails received:', JSON.stringify(activityDetails, null, 2));
+        console.debug(`fetch_activity_content: Base details for cmid ${cmid}, modname ${modname}, instance ${instanceId}, course ${effectiveCourseId}`);
 
-        if (modname === 'page') {
-            // Encontrar a URL correta para o conteúdo da página
-            // A 'url' no objeto do módulo 'page' geralmente é a view.php,
-            // mas 'contents' pode ter um 'fileurl' mais direto se o módulo for estruturado assim.
-            // Para 'mod_page', o 'intro' (descrição) PODE ser o conteúdo principal se for simples,
-            // ou pode haver um 'contentfiles' dentro de 'contents'.
-            // Se 'activityDetails.contents' tiver um item com type 'content' e 'fileurl', use-o.
-            // Se não, e a 'activityDetails.url' for a melhor aposta:
-            const pageViewUrl = activityDetails.url; // URL para view.php?id=X
-            if (pageViewUrl) {
-                // Se a descrição já contiver o conteúdo (comum em 'page')
-                if (activityDetails.description && typeof activityDetails.description === 'string') {
-                    // Você pode querer limpar o HTML da descrição aqui
-                    const $ = cheerio.load(activityDetails.description);
-                    return $('body').text().trim() || "[Descrição da página como conteúdo]";
-                }
-                // Ou se 'contents' tiver o conteúdo (mais complexo para 'page')
-                // Este é um fallback, getPageModuleContentByUrl espera uma URL que retorna HTML direto.
-                // A URL do módulo de página pode já ser o que você precisa.
-                // Se 'contents' tem a URL do conteúdo real:
-                const contentEntry = contents.find((c: MoodleModuleContent) => c.type === 'content' || c.type === 'file'); // Moodle pode variar
-                if (contentEntry && contentEntry.fileurl) {
-                    return await this.moodleClient.getPageModuleContentByUrl(contentEntry.fileurl);
-                }
-                // Fallback para a URL principal do módulo se a estrutura acima não for encontrada
-                return await this.moodleClient.getPageModuleContentByUrl(pageViewUrl);
+        // Passo 2: Usar APIs específicas do Moodle com base no modname
+        let richContent: string | object = `[Conteúdo não processado para modname: ${modname}]`;
+        type ActivityFile = { filename: string; fileurl: string; mimetype: string };
+        let files: ActivityFile[] = [];
+
+        switch (modname) {
+            case 'assign': {
+              // effectiveCourseId e instanceId são extraídos corretamente de baseActivityDetails.
+              // Assegura-te que eles são efetivamente números.
+              const numericCourseId = Number(effectiveCourseId);
+              const numericInstanceId = Number(instanceId);
+
+              if (isNaN(numericCourseId) || isNaN(numericInstanceId)) {
+                  throw new McpError(ErrorCode.InternalError, `Invalid courseId or instanceId for assign: courseId=${effectiveCourseId}, instanceId=${instanceId}`);
+              }
+
+              console.debug(`Fetching rich content for assign (instance: ${numericInstanceId}, course: ${numericCourseId})`);
+              try {
+                  // Chama getAssignmentDetails com courseId e instanceId
+                  const assignmentData = await this.moodleClient.getAssignmentDetails(
+                      numericCourseId,
+                      numericInstanceId
+                  );
+
+                  if (assignmentData && assignmentData.intro) {
+                      const $ = cheerio.load(assignmentData.intro);
+                      richContent = $.text().trim() || "[Descrição do trabalho vazia ou apenas HTML]";
+
+                      if (assignmentData.introfiles && assignmentData.introfiles.length > 0) {
+                          files = assignmentData.introfiles.map((file: MoodleModuleContent) => ({
+                              filename: file.filename ?? '',
+                              fileurl: file.fileurl ?? '',
+                              mimetype: file.mimetype ?? '',
+                          }));
+                          richContent += `\n\nFicheiros Anexos: ${files.map(f => f.filename).join(', ')}`;
+                      }
+                  } else {
+                      // Se assignmentData for encontrado mas não tiver 'intro'
+                      if (assignmentData) {
+                          richContent = "[Detalhes do trabalho encontrados, mas a descrição (intro) está em falta ou vazia]";
+                          console.warn("Assignment data found but 'intro' is missing:", JSON.stringify(assignmentData, null, 2));
+                      } else {
+                          // Este caso não deveria acontecer se getAssignmentDetails lançar erro quando não encontra
+                          richContent = "[Descrição (intro) do trabalho não encontrada nos detalhes ricos (assignmentData nulo/undefined)]";
+                      }
+                  }
+              } catch (e) {
+                  if (e instanceof McpError) { // Re-lançar McpError
+                      console.error(`MCP Error fetching rich assignment details: ${e.message} (Code: ${e.code})`);
+                      richContent = `[Erro ao buscar detalhes do trabalho: ${e.message}]`;
+                  } else if (e && typeof e === 'object' && 'message' in e) {
+                      console.error(`Error fetching rich assignment details: ${(e as Error).message}`);
+                      richContent = `[Erro ao buscar detalhes do trabalho: ${(e as Error).message}]`;
+                  } else {
+                      console.error(`Unknown error fetching rich assignment details:`, e);
+                      richContent = `[Erro desconhecido ao buscar detalhes do trabalho: ${JSON.stringify(e)}]`;
+                  }
+              }
+              break;
             }
-            return "[Conteúdo da página não pôde ser determinado]";
-        } else if (modname === 'resource' && contents.length > 0) {
-            const resourceFile = contents.find((c: MoodleModuleContent) => c.type === 'file'); // Pode ser o primeiro, ou filtrar por tipo
-            if (resourceFile && resourceFile.fileurl && resourceFile.mimetype) {
-                return await this.moodleClient.getResourceFileContent(resourceFile.fileurl, resourceFile.mimetype);
+            case 'page': {
+                console.debug(`Fetching rich content for page (cmid: ${cmid})`);
+                // baseActivityDetails (de core_course_get_course_module) pode já ter o conteúdo.
+                let pageHtmlContent = "";
+                if (baseActivityDetails.description) { // Algumas páginas simples usam a descrição
+                    pageHtmlContent = baseActivityDetails.description;
+                }
+                // Verificar 'contents' ou 'contentfiles' para o HTML principal
+                // O objeto baseActivityDetails.contents pode variar
+                const pageContents = baseActivityDetails.contents || (Array.isArray(baseActivityDetails.contentfiles) && baseActivityDetails.contentfiles.length > 0 ? [{
+                    type: 'file', // Assumindo
+                    filename: baseActivityDetails.contentfiles[0]?.filename,
+                    fileurl: baseActivityDetails.contentfiles[0]?.fileurl,
+                    mimetype: baseActivityDetails.contentfiles[0]?.mimetype,
+                }] : []);
+
+                const mainHtmlFile = pageContents.find((c: MoodleModuleContent) => c.type === 'file' && c.mimetype && c.mimetype.includes('text/html'));
+
+                if (mainHtmlFile && mainHtmlFile.fileurl) {
+                    try {
+                        // getPageModuleContentByUrl PRECISA usar o token para URLs de ficheiros de conteúdo
+                        pageHtmlContent = await this.moodleClient.getPageModuleContentByUrl(mainHtmlFile.fileurl); // Esta função precisa ser robusta e usar o token
+                    } catch (e) {
+                          if (e && typeof e === 'object' && 'message' in e) {
+                            console.warn(`Failed to fetch page content from fileurl ${mainHtmlFile.fileurl}: ${(e as { message?: string }).message}. Falling back to description or URL.`);
+                          } else {
+                            console.warn(`Failed to fetch page content from fileurl ${mainHtmlFile.fileurl}: ${JSON.stringify(e)}. Falling back to description or URL.`);
+                          }
+                          if (!pageHtmlContent && baseActivityDetails.url) { // Fallback para a URL principal se a descrição for vazia
+                            try {
+                                pageHtmlContent = await this.moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
+                            } catch (e2) {
+                                if (e2 && typeof e2 === 'object' && 'message' in e2) {
+                                    console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${(e2 as { message?: string }).message}`);
+                                } else {
+                                    console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${JSON.stringify(e2)}`);
+                                }
+                            }
+                          }
+                    }
+                } 
+                if (!pageHtmlContent && baseActivityDetails.description) { // Tentar descrição primeiro se não usou fileurl
+                  pageHtmlContent = baseActivityDetails.description;
+                }
+                if (!pageHtmlContent && baseActivityDetails.url) { // Se não há description nem fileurl, tentar a URL principal
+                      try {
+                        pageHtmlContent = await this.moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
+                    } catch (e) {
+                        if (e && typeof e === 'object' && 'message' in e) {
+                            console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${(e as { message?: string }).message}`);
+                        } else {
+                            console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${JSON.stringify(e)}`);
+                        }
+                    }
+                }
+
+                if (pageHtmlContent) {
+                    const $ = cheerio.load(pageHtmlContent);
+                    richContent = $.text().trim() || "[Conteúdo da página vazio ou apenas HTML]";
+                } else {
+                    richContent = "[Conteúdo da página não encontrado]";
+                }
+                break;
             }
-            return "[Ficheiro do recurso não encontrado ou mimetype em falta]";
-        } else if (modname === 'assign' && activityDetails.intro) {
-            // Para trabalhos (assign), o 'intro' (descrição) é o conteúdo principal.
-            // Limpar HTML se necessário
-            const $ = cheerio.load(activityDetails.intro);
-            return $('body').text().trim() || "[Descrição do trabalho]";
-        }
-        // Adicione mais 'else if' para outros modnames (quiz, forum, etc.) se quiser extrair o seu "conteúdo" principal
-        
-        // Se não for nenhum dos tipos conhecidos para extração de conteúdo direto,
-        // talvez retornar a descrição geral ou um aviso.
-        if (activityDetails.description) { // Moodle 4.x pode usar 'description'
-            const $ = cheerio.load(activityDetails.description);
-            return $('body').text().trim() || "[Descrição da atividade]";
-        }
-        if (activityDetails.intro) { // Moodle mais antigo pode usar 'intro'
-            const $ = cheerio.load(activityDetails.intro);
-            return $('body').text().trim() || "[Introdução da atividade]";
+
+            case 'resource': {
+                console.debug(`Fetching rich content for resource (cmid: ${cmid})`);
+                const resourceContents = baseActivityDetails.contents || [];
+                const mainFile = resourceContents.find((c: MoodleModuleContent) => c.type === 'file');
+                if (mainFile && mainFile.fileurl && mainFile.mimetype) {
+                    try {
+                        // getResourceFileContent PRECISA usar o token
+                        richContent = await this.moodleClient.getResourceFileContent(mainFile.fileurl, mainFile.mimetype);
+                        files = [{
+                            filename: mainFile.filename ?? '',
+                            fileurl: mainFile.fileurl ?? '',
+                            mimetype: mainFile.mimetype ?? ''
+                        }];
+                    } catch (e) {
+                        if (e && typeof e === 'object' && 'message' in e) {
+                            console.error(`Error fetching resource content: ${(e as { message?: string }).message}`);
+                            richContent = `[Erro ao buscar conteúdo do recurso: ${(e as { message?: string }).message}]`;
+                        } else {
+                            console.error(`Error fetching resource content:`, e);
+                            richContent = `[Erro ao buscar conteúdo do recurso: ${JSON.stringify(e)}]`;
+                        }
+                    }
+                } else {
+                    richContent = "[Ficheiro do recurso não encontrado ou mimetype em falta]";
+                }
+                break;
+            }
+
+            case 'url': {
+                console.debug(`Fetching rich content for URL (cmid: ${cmid})`);
+                // Para um módulo URL, o "conteúdo" é a própria URL externa e a sua descrição.
+                // A API core_course_get_course_module já deve ter os detalhes.
+                const externalUrl = baseActivityDetails.contents?.[0]?.fileurl || baseActivityDetails.url; // O Moodle pode colocar a URL externa aqui
+                const description = baseActivityDetails.description || baseActivityDetails.intro || "";
+                const $ = cheerio.load(description);
+                richContent = `URL: ${externalUrl}\nDescrição: ${$.text().trim()}`;
+                break;
+            }
+
+            case 'forum': {
+                console.debug(`Fetching rich content for forum (instance: ${instanceId}, course: ${effectiveCourseId})`);
+                // Usar mod_forum_get_forum_discussions_paginated ou mod_forum_get_forum_discussions
+                // Para obter, por exemplo, os N tópicos mais recentes e a descrição do fórum.
+                try {
+                    const forumData = await this.moodleClient.getForumDiscussions(instanceId, /* options */);
+                    let forumIntro = baseActivityDetails.intro || baseActivityDetails.description || "";
+                    if (forumIntro) {
+                        const $intro = cheerio.load(forumIntro);
+                        forumIntro = `Introdução do Fórum: ${$intro.text().trim()}\n\n`;
+                    }
+
+                    if (forumData && forumData.discussions && forumData.discussions.length > 0) {
+                        const discussionSummaries = forumData.discussions.slice(0, 5)
+                          .map((d: MoodleForumDiscussion) => `- Tópico: "${d.name}" por ${d.userfullname} (Respostas: ${d.numreplies})`)
+                          .join('\n');
+                        richContent = `${forumIntro}Últimas Discussões:\n${discussionSummaries}`;
+                    } else {
+                        richContent = `${forumIntro}[Nenhuma discussão encontrada ou fórum vazio]`;
+                    }
+                } catch (e) {
+                    if (e && typeof e === 'object' && 'message' in e) {
+                        console.error(`Error fetching forum discussions: ${(e as { message?: string }).message}`);
+                        richContent = `[Erro ao buscar discussões do fórum: ${(e as { message?: string }).message}]`;
+                    } else {
+                        console.error(`Error fetching forum discussions:`, e);
+                        richContent = `[Erro ao buscar discussões do fórum: ${JSON.stringify(e)}]`;
+                    }
+                }
+                break;
+            }
+
+            // TODO: Adicionar casos para 'quiz', 'lesson', 'wiki', etc.
+            // Para 'quiz', poderias usar mod_quiz_get_quizzes_by_courses (filtrando pelo instanceId)
+            // ou mod_quiz_get_quiz_access_information para obter a descrição e as regras.
+            // Obter as perguntas em si é mais complexo e pode não ser desejado.
+
+            default: {
+                // Fallback: tentar extrair de 'description' ou 'intro' se existirem nos baseActivityDetails
+                let fallbackContent = "";
+                if (baseActivityDetails.description) {
+                    const $ = cheerio.load(baseActivityDetails.description);
+                    fallbackContent = $.text().trim();
+                } else if (baseActivityDetails.intro) {
+                    const $ = cheerio.load(baseActivityDetails.intro);
+                    fallbackContent = $.text().trim();
+                }
+                if (fallbackContent) {
+                    richContent = `Descrição/Introdução: ${fallbackContent}`;
+                } else {
+                    richContent = `[Tipo de atividade "${modname}" não tem método de extração de conteúdo específico. Nenhuma descrição geral encontrada.]`;
+                }
+            }
         }
 
-        return `[Conteúdo não extraível diretamente para modname: ${modname}. Detalhes da atividade retornados.]`;
+        // Passo 3: Retornar o conteúdo de forma estruturada
+        // (Alinhado com o outputSchema que definimos antes)
+        return {
+            contentType: typeof richContent === 'string' && richContent.startsWith('[') ? 'error' : 'text', // Simplificado, pode melhorar
+            content: richContent,
+            files: files,
+            // Adicionar mais metadados se útil:
+            activityName: baseActivityDetails.name,
+            activityType: modname,
+            activityUrl: baseActivityDetails.url
+        };
       }
 
       // Certifique-se que eles também retornam os dados brutos que o handler do SDK pode então stringificar ou envolver.
