@@ -63,7 +63,7 @@ export type GetResourceFileContentOutput = string | null; // Texto extraído ou 
 
 export interface GetActivityDetailsInput {
   activity_id?: number;
-  course_name?: string;
+  course_id?: number;
   activity_name?: string;
 }
 export type GetActivityDetailsOutput = MoodleModule | null;

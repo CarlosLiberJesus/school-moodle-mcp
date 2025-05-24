@@ -264,37 +264,58 @@ export class MoodleApiClient {
   async getActivityDetails(
     params: GetActivityDetailsInput
   ): Promise<GetActivityDetailsOutput> {
+    // Ajuste o tipo de retorno para o objeto do módulo Moodle
     try {
-      // First check if we have an activity_id
       if (params.activity_id !== undefined) {
-        // We have an activity_id - use the old method
-        const courses = await this.getCourses();
-        if (!courses || courses.length === 0) {
+        // Temos cmid. Para obter os detalhes do módulo, incluindo o course_id,
+        // a melhor API do Moodle é core_course_get_course_module.
+        const moduleDetails = await this.moodleRequest<{ cm: MoodleModule }>(
+          "core_course_get_course_module",
+          { cmid: params.activity_id }
+        );
+
+        // A resposta de core_course_get_course_module já é rica.
+        // Pode precisar de alguma adaptação para corresponder ao formato que a get_activity_details retornava antes
+        // se o formato exato for importante para o LLM.
+        // Importante: moduleDetails.cm.course deve dar o course_id
+        if (moduleDetails && moduleDetails.cm) {
+          // Adicionar o course_id ao objeto retornado se não estiver já no formato esperado
+          // Exemplo: return { ...moduleDetails.cm, course_id: moduleDetails.cm.course };
+          return moduleDetails.cm; // moduleDetails.cm contém a informação do módulo
+        } else {
           throw new McpError(
-            ErrorCode.InternalError,
-            "No courses found to retrieve activity details."
+            ErrorCode.InvalidParams,
+            `Activity with cmid ${params.activity_id} not found or invalid response from Moodle.`
           );
         }
+      }
 
-        // Assuming the activity belongs to the first course
-        const courseId = courses[0].id;
-        const sections = await this.getCourseContents(courseId);
-
+      if (params.course_id !== undefined && params.activity_name) {
+        // Temos course_id e activity_name.
+        // 1. Obter os conteúdos do curso.
+        const sections = await this.getCourseContents(params.course_id);
         if (!sections || sections.length === 0) {
           throw new McpError(
-            ErrorCode.InternalError,
-            `No sections found for course ID ${courseId} when retrieving activity details.`
+            ErrorCode.InvalidParams,
+            `No sections found for course ID ${params.course_id}.`
           );
         }
 
-        let activityDetails: MoodleModule | null = null;
+        // 2. Procurar a atividade pelo nome dentro das secções/módulos.
+        let activityDetails = null;
         for (const section of sections) {
           if (section.modules) {
             const foundModule = section.modules.find(
-              (module) => module.id === params.activity_id
+              (module) =>
+                module.name &&
+                module.name
+                  .toLowerCase()
+                  .includes(params.activity_name!.toLowerCase()) // activity_name é garantido aqui pelo Zod
             );
             if (foundModule) {
               activityDetails = foundModule;
+              // Adicionar course_id ao resultado se não estiver lá, para consistência
+              // activityDetails.course_id = params.course_id; // Ou garantir que o outputSchema sempre o inclua
               break;
             }
           }
@@ -303,95 +324,37 @@ export class MoodleApiClient {
         if (!activityDetails) {
           throw new McpError(
             ErrorCode.InvalidParams,
-            `Activity with ID ${params.activity_id} not found.`
+            `Activity "${params.activity_name}" not found in course ID ${params.course_id}.`
           );
         }
-
-        return activityDetails;
+        // Importante: Adicionar o course_id ao objeto retornado, pois foi um input
+        return { ...activityDetails, course_id_provided: params.course_id }; // Ou uma forma mais estruturada
       }
 
-      // If we don't have an activity_id, we must have course_name and activity_name
-      if (!params.course_name || !params.activity_name) {
-        throw new McpError(
-          ErrorCode.InvalidParams,
-          "Either activity_id or both course_name and activity_name must be provided."
-        );
-      }
-
-      // Search by course name and activity name
-      const courses = await this.getCourses();
-      if (!courses || courses.length === 0) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          "No courses found to retrieve activity details."
-        );
-      }
-
-      const course = courses.find(
-        (c) =>
-          c.fullname === params.course_name ||
-          c.shortname === params.course_name
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        "Insufficient parameters for get_activity_details. Provide activity_id OR (course_id AND activity_name)."
       );
-      if (!course) {
-        throw new McpError(
-          ErrorCode.InvalidParams,
-          `Course "${params.course_name}" not found.`
-        );
-      }
-
-      const sections = await this.getCourseContents(course.id);
-      if (!sections || sections.length === 0) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          `No sections found for course ID ${course.id} when retrieving activity details.`
-        );
-      }
-
-      let activityDetails: MoodleModule | null = null;
-      for (const section of sections) {
-        if (section.modules) {
-          const foundModule = section.modules.find(
-            (module) =>
-              module.name &&
-              module.name
-                .toLowerCase()
-                .includes(params.activity_name?.toLowerCase() ?? "")
-          );
-          if (foundModule) {
-            activityDetails = foundModule;
-            break;
-          }
-        }
-      }
-
-      if (!activityDetails) {
-        throw new McpError(
-          ErrorCode.InvalidParams,
-          `Activity "${params.activity_name}" not found in course "${params.course_name}"`
-        );
-      }
-
-      return activityDetails;
     } catch (error: unknown) {
       if (error instanceof McpError) throw error;
       // Type guard para Error
       if (error && typeof error === "object" && "message" in error) {
         console.error(
-          `Fail to retrive activity details: `,
+          `Failed to retrieve activity details:`,
           (error as { message?: string }).message
         );
         throw new McpError(
           ErrorCode.InternalError,
-          `Fail to retrive activity details: ${
+          `Failed to retrieve activity details: ${
             (error as { message?: string }).message
           }`
         );
       } else {
         // fallback para erros não convencionais
-        console.error(`Fail to retrive activity details:`, error);
+        console.error(`Failed to retrieve activity details:`, error);
         throw new McpError(
           ErrorCode.InternalError,
-          `Fail to retrive activity details: ${JSON.stringify(error)}`
+          `Failed to retrieve activity details: ${JSON.stringify(error)}`
         );
       }
     }

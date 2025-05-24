@@ -15,7 +15,13 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     description: "Retrieves a list of all available courses from Moodle.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        course_name_filter: {
+          type: "string",
+          description:
+            "Optional. Text to filter course names (fullname or shortname, case-insensitive).",
+        },
+      },
       required: [],
       outputSchema: {
         type: "array",
@@ -413,24 +419,28 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
         {
           properties: {
             activity_id: {
+              // Este é o cmid (Course Module ID)
               type: "integer",
-              description: "The ID of the activity to retrieve details for.",
+              description:
+                "The Course Module ID (cmid) of the activity to retrieve details for. This is the most direct way to get an activity.",
             },
           },
           required: ["activity_id"],
         },
         {
           properties: {
-            course_name: {
-              type: "string",
-              description: "The name of the course to search for the activity.",
+            course_id: {
+              type: "integer",
+              description:
+                "The ID of the course where the activity is located. Obtain this using the 'get_courses' tool first if you only have the course name.",
             },
             activity_name: {
               type: "string",
-              description: "The name of the activity to retrieve details for.",
+              description:
+                "The name (or part of the name, case-insensitive) of the activity to search for within the specified course_id.",
             },
           },
-          required: ["course_name", "activity_name"],
+          required: ["course_id", "activity_name"],
         },
       ],
     },

@@ -158,8 +158,18 @@ export class MoodleMCP {
     // A sua lógica de switch que chama this.moodleClient...
     // Adapte o retorno para que o handler do SDK CallToolRequestSchema possa formatá-lo.
     switch (toolName) {
-      case 'get_courses':
-        return await this.moodleClient.getCourses();
+      case 'get_courses': {
+        const { course_name_filter } = validatedInput as { course_name_filter?: string }; // Type assertion
+        let courses = await this.moodleClient.getCourses(); // getCourses ainda vai buscar todos
+        if (course_name_filter && course_name_filter.trim() !== "") {
+            const filterText = course_name_filter.toLowerCase().trim();
+            courses = courses.filter(course =>
+                (course.fullname && course.fullname.toLowerCase().includes(filterText)) ||
+                (course.shortname && course.shortname.toLowerCase().includes(filterText))
+            );
+        }
+        return courses;
+      }
       case 'get_course_contents': {
         const { course_id } = validatedInput as GetCourseContentsInput;
         return await this.moodleClient.getCourseContents(course_id);
@@ -179,13 +189,13 @@ export class MoodleMCP {
         return await this.moodleClient.getActivityDetails(validatedInput);
       }
       case 'fetch_activity_content': {
-        const { activity_id, course_name, activity_name } = validatedInput;
+        const { activity_id, course_id, activity_name } = validatedInput;
         let activityDetails;
 
         if (activity_id !== undefined) {
             activityDetails = await this.moodleClient.getActivityDetails({ activity_id });
-        } else if (course_name && activity_name) {
-            activityDetails = await this.moodleClient.getActivityDetails({ course_name, activity_name });
+        } else if (course_id && activity_name) {
+            activityDetails = await this.moodleClient.getActivityDetails({ course_id, activity_name });
         } else {
             throw new McpError(ErrorCode.InvalidParams, 'Insufficient parameters for fetch_activity_content');
         }
@@ -253,7 +263,7 @@ export class MoodleMCP {
         }
 
         return `[Conteúdo não extraível diretamente para modname: ${modname}. Detalhes da atividade retornados.]`;
-    }
+      }
 
       // Certifique-se que eles também retornam os dados brutos que o handler do SDK pode então stringificar ou envolver.
       default:

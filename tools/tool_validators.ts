@@ -27,7 +27,12 @@ export class ToolValidator {
 
   private initializeValidators() {
     // Definir validadores Zod para cada ferramenta
-    this.validators.set("get_courses", z.object({}));
+    this.validators.set(
+      "get_courses",
+      z.object({
+        course_name_filter: z.string().optional(),
+      })
+    );
     this.validators.set(
       "get_course_contents",
       z.object({
@@ -50,10 +55,10 @@ export class ToolValidator {
     this.validators.set(
       "get_activity_details",
       z.union([
-        z.object({ activity_id: z.number().int().positive() }),
+        z.object({ activity_id: z.number().int().positive() }), // cmid
         z.object({
-          course_name: z.string(),
-          activity_name: z.string(),
+          course_id: z.number().int().positive(),
+          activity_name: z.string().min(1), // Garantir que activity_name não é vazio
         }),
       ])
     );
@@ -62,7 +67,7 @@ export class ToolValidator {
       z.union([
         z.object({ activity_id: z.number().int().positive() }),
         z.object({
-          course_name: z.string(),
+          course_id: z.number().int().positive(),
           activity_name: z.string(),
         }),
       ])
