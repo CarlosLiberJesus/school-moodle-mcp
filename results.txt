@@ -79,7 +79,7 @@ Result: {
 }
 
 Test 2.1: get_courses
-handleToolInternal: Calling tool 'get_courses' with validated input: {}
+handleToolInternal: Calling tool 'get_courses' with validated input: { course_name_filter: null }
 Courses: [
   {
     "id": 6,
@@ -581,7 +581,7 @@ Course Contents: {
         "valueused": false,
         "hascompletion": true,
         "isautomatic": false,
-        "istrackeduser": false,
+        "istrackeduser": true,
         "uservisible": true,
         "details": []
       },
@@ -634,7 +634,7 @@ Course Contents: {
         "valueused": false,
         "hascompletion": true,
         "isautomatic": false,
-        "istrackeduser": false,
+        "istrackeduser": true,
         "uservisible": true,
         "details": []
       },
@@ -667,7 +667,7 @@ Course Contents: {
         "valueused": false,
         "hascompletion": true,
         "isautomatic": true,
-        "istrackeduser": false,
+        "istrackeduser": true,
         "uservisible": true,
         "details": [
           {
@@ -767,11 +767,87 @@ Resource File Content: [Conteúdo PDF não processado devido à falta de parser]
 
 Test 6.1: fetch_activity_content by activity_id
 handleToolInternal: Calling tool 'fetch_activity_content' with validated input: { activity_id: 150 }
+Debug courseId: effectiveCourseId=6, baseActivityDetails.course=6, course_id=undefined
 fetch_activity_content: Base details for cmid 150, modname assign, instance 27, course 6
 Fetching rich content for assign (instance: 27, course: 6)
+Fetching ALL assignments for course 6 to find instance 27
+Found specific assignment: {
+  "id": 27,
+  "cmid": 150,
+  "course": 6,
+  "name": "Componentes Fundamentais de um PC",
+  "nosubmissions": 0,
+  "submissiondrafts": 0,
+  "sendnotifications": 1,
+  "sendlatenotifications": 1,
+  "sendstudentnotifications": 1,
+  "duedate": 1633301940,
+  "allowsubmissionsfromdate": 1632294900,
+  "grade": 20,
+  "timemodified": 1635168962,
+  "completionsubmit": 0,
+  "cutoffdate": 0,
+  "gradingduedate": 0,
+  "teamsubmission": 0,
+  "requireallteammemberssubmit": 0,
+  "teamsubmissiongroupingid": 0,
+  "blindmarking": 0,
+  "hidegrader": 0,
+  "revealidentities": 0,
+  "attemptreopenmethod": "none",
+  "maxattempts": -1,
+  "markingworkflow": 0,
+  "markingallocation": 0,
+  "requiresubmissionstatement": 0,
+  "preventsubmissionnotingroup": 0,
+  "configs": [
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "maxsubmissionsizebytes",
+      "value": "2097152"
+    },
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "enabled",
+      "value": "1"
+    },
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "filetypeslist",
+      "value": ""
+    },
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "maxfilesubmissions",
+      "value": "1"
+    },
+    {
+      "plugin": "comments",
+      "subtype": "assignsubmission",
+      "name": "enabled",
+      "value": "1"
+    }
+  ],
+  "intro": "<p style=\"text-align: left;\">Acede ao link \"Videos Didáticos\" que se encontra no separador<span class=\"\" style=\"background-color: rgb(255, 0, 0);\"></span><a href=\"https://127.0.0.1/moodle/course/view.php?id=6&amp;section=5&amp;singlesec=5\" target=\"_blank\"><strong><span class=\"\" style=\"color: rgb(245, 184, 0); background-color: rgb(255, 0, 0);\"></span></strong></a><span class=\"\" style=\"background-color: rgb(255, 0, 0);\"></span> <strong><u><a href=\"https://127.0.0.1/moodle/course/view.php?id=6&amp;section=5&amp;singlesec=5\"><span class=\"\" style=\"color: rgb(51, 102, 255);\">Saber+</span></a></u></strong> da&nbsp; disciplina e visiona o filme <u><a href=\"http://www.es-loule.edu.pt/anexos/materiaispedagogicos/VDidaticos/Montagem_de_PC.wmv\"><strong><span style=\"color: rgb(51, 102, 255);\" class=\"\">\"Montagem de PC</span></strong><span class=\"\" style=\"color: rgb(51, 102, 255);\">\"</span></a></u>.</p>\n<p style=\"text-align: left;\">De seguida num ficheiro Word elabora uma pequena descrição do que acabaste de ver. Isto é, faz um resumo das fases necessárias para montar um PC e identifica todos os componentes de hadware e software necessários ao funcionamento do mesmo.</p>\n<p style=\"text-align: left;\">De seguida, e com recurso à web, dispõe os componentes identificados numa tabela (no word) &nbsp;e associa uma imagem representativa do mesmo.</p>\n<p style=\"text-align: left;\"><u><strong>A formatação do Documento deve obedecer a: </strong></u>O texto deve ser escrito em Arial, tamanho 12, espaçamento 1.5, deve ter uma capa com titulo sugestivo, identificação de quem o realizou e data. Deve estar paginado em rodapé e apresentar o logo da ESL no cabeçalho. A apresentação de um índice automático e um índice de figuras não sendo obrigatório só valorizará o documento.<br></p>\n<p style=\"text-align: left;\">Por fim submete o documento produzido em formato editável, como resposta a este trabalho.</p>\n<p style=\"text-align: left;\">Tamanho do trabalho: 2 MB</p>\n<p style=\"text-align: left;\"><span style=\"line-height: 1.231;\">Bom trabalho!</span></p><p style=\"text-align: left;\"><span style=\"line-height: 1.231;\">PS: É obrigatório a utilização de um processador de texto tipo Word. É \nsempre necessário verificar que o documento produzido abre \nconvenientemente nos computadores da sala D1.02.<br></span></p>\n<p style=\"text-align: left;\"></p>",
+  "introformat": 1,
+  "introfiles": [],
+  "introattachments": []
+}
 Fetched Activity Content (by id): {
-  contentType: 'error',
-  content: '[Erro ao buscar detalhes do trabalho: MCP error -32601: Assignment with instance ID 27 not found in course 6.]',
+  contentType: 'text',
+  content: 'Acede ao link "Videos Didáticos" que se encontra no separador Saber+ da  disciplina e visiona o filme "Montagem de PC".\n' +
+    'De seguida num ficheiro Word elabora uma pequena descrição do que acabaste de ver. Isto é, faz um resumo das fases necessárias para montar um PC e identifica todos os componentes de hadware e software necessários ao funcionamento do mesmo.\n' +
+    'De seguida, e com recurso à web, dispõe os componentes identificados numa tabela (no word)  e associa uma imagem representativa do mesmo.\n' +
+    'A formatação do Documento deve obedecer a: O texto deve ser escrito em Arial, tamanho 12, espaçamento 1.5, deve ter uma capa com titulo sugestivo, identificação de quem o realizou e data. Deve estar paginado em rodapé e apresentar o logo da ESL no cabeçalho. A apresentação de um índice automático e um índice de figuras não sendo obrigatório só valorizará o documento.\n' +
+    'Por fim submete o documento produzido em formato editável, como resposta a este trabalho.\n' +
+    'Tamanho do trabalho: 2 MB\n' +
+    'Bom trabalho!PS: É obrigatório a utilização de um processador de texto tipo Word. É \n' +
+    'sempre necessário verificar que o documento produzido abre \n' +
+    'convenientemente nos computadores da sala D1.02.',
   files: [],
   activityName: 'Componentes Fundamentais de um PC',
   activityType: 'assign',
@@ -780,11 +856,87 @@ Fetched Activity Content (by id): {
 
 Test 6.2: fetch_activity_content by course_name + activity_name
 handleToolInternal: Calling tool 'fetch_activity_content' with validated input: { course_id: 6, activity_name: 'Componentes Fundamentais de um PC' }
+Debug courseId: effectiveCourseId=6, baseActivityDetails.course=6, course_id=6
 fetch_activity_content: Base details for cmid 150, modname assign, instance 27, course 6
 Fetching rich content for assign (instance: 27, course: 6)
+Fetching ALL assignments for course 6 to find instance 27
+Found specific assignment: {
+  "id": 27,
+  "cmid": 150,
+  "course": 6,
+  "name": "Componentes Fundamentais de um PC",
+  "nosubmissions": 0,
+  "submissiondrafts": 0,
+  "sendnotifications": 1,
+  "sendlatenotifications": 1,
+  "sendstudentnotifications": 1,
+  "duedate": 1633301940,
+  "allowsubmissionsfromdate": 1632294900,
+  "grade": 20,
+  "timemodified": 1635168962,
+  "completionsubmit": 0,
+  "cutoffdate": 0,
+  "gradingduedate": 0,
+  "teamsubmission": 0,
+  "requireallteammemberssubmit": 0,
+  "teamsubmissiongroupingid": 0,
+  "blindmarking": 0,
+  "hidegrader": 0,
+  "revealidentities": 0,
+  "attemptreopenmethod": "none",
+  "maxattempts": -1,
+  "markingworkflow": 0,
+  "markingallocation": 0,
+  "requiresubmissionstatement": 0,
+  "preventsubmissionnotingroup": 0,
+  "configs": [
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "maxsubmissionsizebytes",
+      "value": "2097152"
+    },
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "enabled",
+      "value": "1"
+    },
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "filetypeslist",
+      "value": ""
+    },
+    {
+      "plugin": "file",
+      "subtype": "assignsubmission",
+      "name": "maxfilesubmissions",
+      "value": "1"
+    },
+    {
+      "plugin": "comments",
+      "subtype": "assignsubmission",
+      "name": "enabled",
+      "value": "1"
+    }
+  ],
+  "intro": "<p style=\"text-align: left;\">Acede ao link \"Videos Didáticos\" que se encontra no separador<span class=\"\" style=\"background-color: rgb(255, 0, 0);\"></span><a href=\"https://127.0.0.1/moodle/course/view.php?id=6&amp;section=5&amp;singlesec=5\" target=\"_blank\"><strong><span class=\"\" style=\"color: rgb(245, 184, 0); background-color: rgb(255, 0, 0);\"></span></strong></a><span class=\"\" style=\"background-color: rgb(255, 0, 0);\"></span> <strong><u><a href=\"https://127.0.0.1/moodle/course/view.php?id=6&amp;section=5&amp;singlesec=5\"><span class=\"\" style=\"color: rgb(51, 102, 255);\">Saber+</span></a></u></strong> da&nbsp; disciplina e visiona o filme <u><a href=\"http://www.es-loule.edu.pt/anexos/materiaispedagogicos/VDidaticos/Montagem_de_PC.wmv\"><strong><span style=\"color: rgb(51, 102, 255);\" class=\"\">\"Montagem de PC</span></strong><span class=\"\" style=\"color: rgb(51, 102, 255);\">\"</span></a></u>.</p>\n<p style=\"text-align: left;\">De seguida num ficheiro Word elabora uma pequena descrição do que acabaste de ver. Isto é, faz um resumo das fases necessárias para montar um PC e identifica todos os componentes de hadware e software necessários ao funcionamento do mesmo.</p>\n<p style=\"text-align: left;\">De seguida, e com recurso à web, dispõe os componentes identificados numa tabela (no word) &nbsp;e associa uma imagem representativa do mesmo.</p>\n<p style=\"text-align: left;\"><u><strong>A formatação do Documento deve obedecer a: </strong></u>O texto deve ser escrito em Arial, tamanho 12, espaçamento 1.5, deve ter uma capa com titulo sugestivo, identificação de quem o realizou e data. Deve estar paginado em rodapé e apresentar o logo da ESL no cabeçalho. A apresentação de um índice automático e um índice de figuras não sendo obrigatório só valorizará o documento.<br></p>\n<p style=\"text-align: left;\">Por fim submete o documento produzido em formato editável, como resposta a este trabalho.</p>\n<p style=\"text-align: left;\">Tamanho do trabalho: 2 MB</p>\n<p style=\"text-align: left;\"><span style=\"line-height: 1.231;\">Bom trabalho!</span></p><p style=\"text-align: left;\"><span style=\"line-height: 1.231;\">PS: É obrigatório a utilização de um processador de texto tipo Word. É \nsempre necessário verificar que o documento produzido abre \nconvenientemente nos computadores da sala D1.02.<br></span></p>\n<p style=\"text-align: left;\"></p>",
+  "introformat": 1,
+  "introfiles": [],
+  "introattachments": []
+}
 Fetched Activity Content (by names): {
-  contentType: 'error',
-  content: '[Erro ao buscar detalhes do trabalho: MCP error -32601: Assignment with instance ID 27 not found in course 6.]',
+  contentType: 'text',
+  content: 'Acede ao link "Videos Didáticos" que se encontra no separador Saber+ da  disciplina e visiona o filme "Montagem de PC".\n' +
+    'De seguida num ficheiro Word elabora uma pequena descrição do que acabaste de ver. Isto é, faz um resumo das fases necessárias para montar um PC e identifica todos os componentes de hadware e software necessários ao funcionamento do mesmo.\n' +
+    'De seguida, e com recurso à web, dispõe os componentes identificados numa tabela (no word)  e associa uma imagem representativa do mesmo.\n' +
+    'A formatação do Documento deve obedecer a: O texto deve ser escrito em Arial, tamanho 12, espaçamento 1.5, deve ter uma capa com titulo sugestivo, identificação de quem o realizou e data. Deve estar paginado em rodapé e apresentar o logo da ESL no cabeçalho. A apresentação de um índice automático e um índice de figuras não sendo obrigatório só valorizará o documento.\n' +
+    'Por fim submete o documento produzido em formato editável, como resposta a este trabalho.\n' +
+    'Tamanho do trabalho: 2 MB\n' +
+    'Bom trabalho!PS: É obrigatório a utilização de um processador de texto tipo Word. É \n' +
+    'sempre necessário verificar que o documento produzido abre \n' +
+    'convenientemente nos computadores da sala D1.02.',
   files: [],
   activityName: 'Componentes Fundamentais de um PC',
   activityType: 'assign',

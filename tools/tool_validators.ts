@@ -30,7 +30,7 @@ export class ToolValidator {
     this.validators.set(
       "get_courses",
       z.object({
-        course_name_filter: z.string().optional(),
+        course_name_filter: z.string().nullable().optional(),
       })
     );
     this.validators.set(
@@ -68,7 +68,10 @@ export class ToolValidator {
         z.object({ activity_id: z.number().int().positive() }),
         z.object({
           course_id: z.number().int().positive(),
-          activity_name: z.string(),
+          activity_name: z.string().min(1, {
+            message:
+              "activity_name must not be empty when used with course_id.",
+          }),
         }),
       ])
     );
@@ -97,12 +100,17 @@ export class ToolValidator {
         validatedData: result,
       };
     } catch (error) {
+      let errorMessage = "Invalid input data";
+      if (error instanceof z.ZodError) {
+        errorMessage = error.errors
+          .map((e) => `${e.path.join(".")}: ${e.message}`)
+          .join("; ");
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
       return {
         isValid: false,
-        error: new McpError(
-          ErrorCode.InvalidParams,
-          error instanceof Error ? error.message : "Invalid input data"
-        ),
+        error: new McpError(ErrorCode.InvalidParams, errorMessage),
       };
     }
   }

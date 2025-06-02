@@ -161,7 +161,7 @@ export class MoodleApiClient {
         "div.page-content", // Se for um HTML de página completo
         "article",
         "main",
-        "body", // Último recurso
+        //"body", // Consider removing body or making it a very last resort with a warning if used
       ];
       let extractedText = "";
       for (const selector of mainContentSelectors) {
@@ -174,7 +174,23 @@ export class MoodleApiClient {
           break;
         }
       }
-      return extractedText || ($("body").text()?.trim() ?? "");
+      // Se nenhum seletor principal encontrar conteúdo, tentar o body, mas com cautela.
+      // Ou retornar uma mensagem indicando que o conteúdo específico não foi encontrado.
+      if (!extractedText && $("body").length) {
+        const bodyText = $("body").text()?.trim();
+        if (bodyText && bodyText.length > 200) {
+          // Evitar retornar body muito curto que pode ser só scripts/ruído
+          console.warn(
+            `getPageModuleContentByUrl: Falling back to full body content for ${pageContentFileUrl}. This might be too broad.`
+          );
+          // extractedText = bodyText; // Descomentar se desejar este fallback
+        }
+      }
+
+      return (
+        extractedText ||
+        "[Conteúdo da página não encontrado ou seletor principal falhou]"
+      );
     } catch (error) {
       console.error(
         `MoodleApiClient: Error in getPageModuleContentByUrl for ${pageContentFileUrl}:`,
@@ -261,19 +277,6 @@ export class MoodleApiClient {
   async getActivityDetails(
     params: GetActivityDetailsInput
   ): Promise<GetActivityDetailsOutput> {
-    // ... (a tua implementação atual para getActivityDetails é boa, usando this.moodleRequest)
-    // Lembra-te de garantir que o output desta função sempre inclui o 'course_id' do curso da atividade.
-    // Por exemplo, quando usas core_course_get_course_module:
-    // if (moduleDetails && moduleDetails.cm) {
-    //     return { ...moduleDetails.cm, course_id_resolved: moduleDetails.cm.course };
-    // }
-    // E quando procuras por course_id e activity_name:
-    // if (activityDetails) {
-    //     return { ...activityDetails, course_id_resolved: params.course_id };
-    // }
-    // (Usar um nome consistente como 'course_id_resolved' ou apenas 'course' se o objeto cm já o tiver como 'course')
-    // A tua versão atual já faz algo semelhante com `moduleDetails.cm` e `{...activityDetails, course_id_provided: params.course_id }`
-    // O importante é que o `fetch_activity_content` possa aceder a este ID de curso de forma fiável a partir do resultado de `getActivityDetails`.
     try {
       if (params.activity_id !== undefined) {
         const moduleDetails = await this.moodleRequest<{ cm: MoodleModule }>(
@@ -403,9 +406,12 @@ export class MoodleApiClient {
           );
           // Ensure introfiles has the required 'type' property for MoodleModuleContent[]
           const introfilesWithType = (specificAssignment.introfiles || []).map(
-            (file: Record<string, unknown>) => ({
-              type: typeof file.type === "string" ? file.type : "file",
-              ...file,
+            (file) => ({
+              type: typeof file.type === "string" ? file.type : "file", // Default to 'file'
+              filename: file.filename as unknown as string,
+              fileurl: file.fileurl as unknown as string,
+              mimetype: file.mimetype as unknown as string,
+              // ...outros campos de file se existirem e forem necessários.
             })
           );
           return {

@@ -26,7 +26,9 @@ async function runAllTests() {
     console.log("Result:", JSON.stringify(detailsByNames, null, 2));
 
     console.log("\nTest 2.1: get_courses");
-    const courses = await mcpServer.callToolForTests("get_courses", {});
+    const courses = await mcpServer.callToolForTests("get_courses", {
+      course_name_filter: null,
+    });
     console.log("Courses:", JSON.stringify(courses, null, 2));
 
     console.log("\nTest 2.2: get_courses with course_name_filter");

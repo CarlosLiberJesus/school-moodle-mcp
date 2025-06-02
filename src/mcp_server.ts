@@ -17,6 +17,8 @@ import type {
 } from './../moodle/moodle_types.js';
 import pkg from '../package.json' with { type: "json" };
 import * as cheerio from 'cheerio';
+import { MOODLE_URL } from "../config/index.js";
+
 
 export class MoodleMCP {
   private server: Server;
@@ -159,14 +161,14 @@ export class MoodleMCP {
     // Adapte o retorno para que o handler do SDK CallToolRequestSchema possa formatá-lo.
     switch (toolName) {
       case 'get_courses': {
-        const { course_name_filter } = validatedInput as { course_name_filter?: string }; // Type assertion
-        let courses = await this.moodleClient.getCourses(); // getCourses ainda vai buscar todos
-        if (course_name_filter && course_name_filter.trim() !== "") {
-            const filterText = course_name_filter.toLowerCase().trim();
-            courses = courses.filter(course =>
-                (course.fullname && course.fullname.toLowerCase().includes(filterText)) ||
-                (course.shortname && course.shortname.toLowerCase().includes(filterText))
-            );
+        const { course_name_filter } = validatedInput as { course_name_filter?: string | null }; // Permitir null
+        let courses = await this.moodleClient.getCourses();
+        if (course_name_filter && typeof course_name_filter === "string" && course_name_filter.trim() !== "") {
+          const filterText = course_name_filter.toLowerCase().trim();
+          courses = courses.filter(course =>
+            (course.fullname && course.fullname.toLowerCase().includes(filterText)) ||
+            (course.shortname && course.shortname.toLowerCase().includes(filterText))
+          );
         }
         return courses;
       }
@@ -208,7 +210,8 @@ export class MoodleMCP {
 
         // Extrair informações cruciais dos detalhes base
         const cmid = baseActivityDetails.id; // Course Module ID
-        const effectiveCourseId = baseActivityDetails.course || course_id; // Garantir que temos o course_id
+        const effectiveCourseId = baseActivityDetails.course; // Garantir que temos o course_id
+        const activityUrl = baseActivityDetails.url || (baseActivityDetails.id ? `${(MOODLE_URL ?? '').replace('/webservice/rest/server.php', '')}/mod/${baseActivityDetails.modname}/view.php?id=${baseActivityDetails.id}` : "URL da atividade não disponível");
         if (!effectiveCourseId) {
             throw new McpError(ErrorCode.InternalError, 'Could not determine course_id for activity');
         }
@@ -447,7 +450,7 @@ export class MoodleMCP {
             // Adicionar mais metadados se útil:
             activityName: baseActivityDetails.name,
             activityType: modname,
-            activityUrl: baseActivityDetails.url
+            activityUrl: activityUrl,
         };
       }
 
