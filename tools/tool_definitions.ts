@@ -16,13 +16,17 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     inputSchema: {
       type: "object",
       properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
         course_name_filter: {
           type: "string",
           description:
             "Optional. Text to filter course names (fullname or shortname, case-insensitive).",
         },
       },
-      required: [],
+      required: ["moodle_token"],
     },
     outputSchema: {
       type: "array",
@@ -105,12 +109,16 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     inputSchema: {
       type: "object",
       properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
         course_id: {
           type: "integer",
           description: "The ID of the course to retrieve contents for.",
         },
       },
-      required: ["course_id"],
+      required: ["moodle_token", "course_id"],
     },
     outputSchema: {
       type: "array",
@@ -252,6 +260,10 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     inputSchema: {
       type: "object",
       properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
         page_content_url: {
           type: "string",
           format: "url",
@@ -259,7 +271,7 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
             "The direct URL to the Moodle page module's content (e.g., from module details).",
         },
       },
-      required: ["page_content_url"],
+      required: ["moodle_token", "page_content_url"],
     },
     outputSchema: {
       type: "string",
@@ -274,6 +286,10 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     inputSchema: {
       type: "object",
       properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
         resource_file_url: {
           type: "string",
           format: "url",
@@ -285,7 +301,7 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
             'The MIME type of the file (e.g., "application/pdf", "text/plain").',
         },
       },
-      required: ["resource_file_url", "mimetype"],
+      required: ["moodle_token", "resource_file_url", "mimetype"],
     },
     outputSchema: {
       type: "string",
@@ -299,6 +315,12 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
       "Retrieves the details of a specific activity from Moodle. Can search by activity ID or by course name and activity name.",
     inputSchema: {
       type: "object",
+      properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
+      },
       oneOf: [
         {
           properties: {
@@ -326,6 +348,7 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
           required: ["course_id", "activity_name"],
         },
       ],
+      required: ["moodle_token"],
     },
     outputSchema: {
       type: "object",
@@ -431,6 +454,12 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
       "Fetches the detailed content of a specific Moodle activity (like assignment description, page text, resource file link, or URL details). Provides main text and a list of associated files.",
     inputSchema: {
       type: "object",
+      properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
+      },
       oneOf: [
         {
           properties: {
@@ -456,6 +485,7 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
           required: ["course_id", "activity_name"],
         },
       ],
+      required: ["moodle_token"],
     },
     outputSchema: {
       type: "object",

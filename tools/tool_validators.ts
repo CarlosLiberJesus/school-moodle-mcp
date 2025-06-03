@@ -30,50 +30,94 @@ export class ToolValidator {
     this.validators.set(
       "get_courses",
       z.object({
+        moodle_token: z
+          .string()
+          .min(1, { message: "moodle_token is required." }),
         course_name_filter: z.string().nullable().optional(),
       })
     );
     this.validators.set(
       "get_course_contents",
       z.object({
+        moodle_token: z
+          .string()
+          .min(1, { message: "moodle_token is required." }),
         course_id: z.number().int().positive(),
       })
     );
     this.validators.set(
       "get_page_module_content",
       z.object({
+        moodle_token: z
+          .string()
+          .min(1, { message: "moodle_token is required." }),
         page_content_url: z.string().url(),
       })
     );
     this.validators.set(
       "get_resource_file_content",
       z.object({
+        moodle_token: z
+          .string()
+          .min(1, { message: "moodle_token is required." }),
         resource_file_url: z.string().url(),
         mimetype: z.string(),
       })
     );
     this.validators.set(
       "get_activity_details",
-      z.union([
-        z.object({ activity_id: z.number().int().positive() }), // cmid
-        z.object({
-          course_id: z.number().int().positive(),
-          activity_name: z.string().min(1), // Garantir que activity_name não é vazio
-        }),
-      ])
+      z
+        .object({
+          moodle_token: z
+            .string()
+            .min(1, { message: "moodle_token is required." }),
+        })
+        .and(
+          z.union([
+            z.object({
+              activity_id: z.number().int().positive({
+                message: "activity_id must be a positive integer.",
+              }),
+            }),
+            z.object({
+              course_id: z
+                .number()
+                .int()
+                .positive({ message: "course_id must be a positive integer." }),
+              activity_name: z
+                .string()
+                .min(1, { message: "activity_name must not be empty." }),
+            }),
+          ])
+        )
     );
     this.validators.set(
       "fetch_activity_content",
-      z.union([
-        z.object({ activity_id: z.number().int().positive() }),
-        z.object({
-          course_id: z.number().int().positive(),
-          activity_name: z.string().min(1, {
-            message:
-              "activity_name must not be empty when used with course_id.",
-          }),
-        }),
-      ])
+      z
+        .object({
+          moodle_token: z
+            .string()
+            .min(1, { message: "moodle_token is required." }),
+        })
+        .and(
+          z.union([
+            z.object({
+              activity_id: z.number().int().positive({
+                message: "activity_id must be a positive integer.",
+              }),
+            }),
+            z.object({
+              course_id: z
+                .number()
+                .int()
+                .positive({ message: "course_id must be a positive integer." }),
+              activity_name: z.string().min(1, {
+                message:
+                  "activity_name must not be empty when used with course_id.",
+              }),
+            }),
+          ])
+        )
     );
   }
 

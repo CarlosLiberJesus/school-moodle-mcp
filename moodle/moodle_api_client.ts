@@ -1,5 +1,5 @@
 // src/moodle/moodle_api_client.ts
-import { MOODLE_URL, MOODLE_TOKEN, NODE_ENV } from "../config/index.js";
+import { MOODLE_URL, NODE_ENV } from "../config/index.js";
 import axios, { AxiosInstance } from "axios";
 import https from "node:https";
 import * as cheerio from "cheerio";
@@ -21,16 +21,23 @@ import { Buffer } from "node:buffer";
 export class MoodleApiClient {
   private httpClient: AxiosInstance;
 
-  constructor() {
-    if (!MOODLE_URL || !MOODLE_TOKEN) {
+  constructor(moodleToken: string) {
+    if (!MOODLE_URL) {
       throw new Error(
         "MoodleApiClient: MOODLE_URL or MOODLE_TOKEN is not configured."
       );
     }
+    if (!moodleToken) {
+      // MODIFICADO: Verificar o token passado
+      throw new Error(
+        "MoodleApiClient: MOODLE_TOKEN must be provided to the constructor."
+      );
+    }
+
     this.httpClient = axios.create({
       baseURL: MOODLE_URL,
       params: {
-        wstoken: MOODLE_TOKEN,
+        wstoken: moodleToken,
         moodlewsrestformat: "json",
       },
       httpsAgent: new https.Agent({
@@ -136,33 +143,23 @@ export class MoodleApiClient {
       console.info(
         `Attempting to fetch HTML content from: ${pageContentFileUrl}`
       );
-
-      // As URLs de pluginfile.php retornadas pelas APIs Moodle geralmente JÁ contêm um token.
-      // Portanto, um GET direto para essa URL deve funcionar.
-      // Não devemos usar this.httpClient aqui, pois ele adicionaria o wstoken aos params,
-      // o que não é o esperado para pluginfile.php (que espera o token na própria URL).
       const response = await axios.get(pageContentFileUrl, {
-        // Não é necessário responseType: 'arraybuffer' para HTML
         httpsAgent: new https.Agent({
           rejectUnauthorized: NODE_ENV === "production",
         }),
-        // Se precisares forçar o token (SE pageContentFileUrl não o tiver e for um pluginfile.php):
-        // params: { token: MOODLE_TOKEN } // Mas geralmente não é necessário se a URL já o tem.
       });
 
       const $ = cheerio.load(response.data);
-      // Tenta ser mais específico se souberes a estrutura do conteúdo da página Moodle
-      // Por exemplo, o conteúdo real pode estar dentro de um div com uma classe específica.
       const mainContentSelectors = [
-        "div.box.py-3.generaltable", // Comum para o conteúdo de uma 'page' quando descarregado
-        "div.no-overflow", // Outro seletor comum
-        'div[role="main"]', // Mais genérico
+        "div.box.py-3.generaltable",
+        "div.no-overflow",
+        'div[role="main"]',
         "#region-main",
-        "div.page-content", // Se for um HTML de página completo
+        "div.page-content",
         "article",
         "main",
-        //"body", // Consider removing body or making it a very last resort with a warning if used
       ];
+
       let extractedText = "";
       for (const selector of mainContentSelectors) {
         const elementText = $(selector).text();
@@ -174,19 +171,6 @@ export class MoodleApiClient {
           break;
         }
       }
-      // Se nenhum seletor principal encontrar conteúdo, tentar o body, mas com cautela.
-      // Ou retornar uma mensagem indicando que o conteúdo específico não foi encontrado.
-      if (!extractedText && $("body").length) {
-        const bodyText = $("body").text()?.trim();
-        if (bodyText && bodyText.length > 200) {
-          // Evitar retornar body muito curto que pode ser só scripts/ruído
-          console.warn(
-            `getPageModuleContentByUrl: Falling back to full body content for ${pageContentFileUrl}. This might be too broad.`
-          );
-          // extractedText = bodyText; // Descomentar se desejar este fallback
-        }
-      }
-
       return (
         extractedText ||
         "[Conteúdo da página não encontrado ou seletor principal falhou]"
@@ -221,16 +205,12 @@ export class MoodleApiClient {
       `Attempting to fetch file content from: ${resourceFileUrl} (MIME: ${mimetype})`
     );
     try {
-      // Semelhante a getPageModuleContentByUrl, resourceFileUrl (de pluginfile.php)
-      // geralmente já contém o token.
       const response = await axios.get(resourceFileUrl, {
-        responseType: "arraybuffer", // Importante para ficheiros binários
+        responseType: "arraybuffer",
         httpsAgent: new https.Agent({
           rejectUnauthorized: NODE_ENV === "production",
         }),
-        // params: { token: MOODLE_TOKEN } // Apenas se resourceFileUrl não tiver token e precisar.
       });
-
       const fileBuffer = Buffer.from(response.data);
 
       if (mimetype.includes("pdf")) {
@@ -241,7 +221,6 @@ export class MoodleApiClient {
           "vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
       ) {
-        // DOCX
         console.warn("DOCX parsing not yet implemented.");
         return "[Conteúdo DOCX não processado devido à falta de parser]";
       } else if (mimetype.startsWith("text/")) {

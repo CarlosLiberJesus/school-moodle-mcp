@@ -1,6 +1,22 @@
 import { MoodleMCP } from "../src/mcp_server.js";
+import dotenv from "dotenv"; // Para carregar .env para testes
+import path from "path";
+import { fileURLToPath } from "url";
 
-// test/test_activity_fetch.test.ts
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Carregar variáveis de ambiente específicas para teste, se necessário, ou usar as globais
+dotenv.config({ path: path.resolve(__dirname, "../../.env") }); // Ajuste o caminho para o seu .env
+
+const MOODLE_TOKEN_FOR_TESTS = process.env.MOODLE_TOKEN; // Usa o token do .env
+
+if (!MOODLE_TOKEN_FOR_TESTS) {
+  console.error(
+    "MOODLE_TOKEN não encontrado no .env. Testes não podem prosseguir."
+  );
+  process.exit(1);
+}
 
 async function runAllTests() {
   try {
@@ -9,7 +25,10 @@ async function runAllTests() {
     console.log("Test 1.1: get_activity_details by activity_id");
     const detailsById = await mcpServer.callToolForTests(
       "get_activity_details",
-      { activity_id: 150 }
+      {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
+        activity_id: 150,
+      }
     );
     console.log("Result:", JSON.stringify(detailsById, null, 2));
 
@@ -19,6 +38,7 @@ async function runAllTests() {
     const detailsByNames = await mcpServer.callToolForTests(
       "get_activity_details",
       {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
         course_id: 6,
         activity_name: "Componentes Fundamentais de um PC",
       }
@@ -27,12 +47,14 @@ async function runAllTests() {
 
     console.log("\nTest 2.1: get_courses");
     const courses = await mcpServer.callToolForTests("get_courses", {
+      moodle_token: MOODLE_TOKEN_FOR_TESTS,
       course_name_filter: null,
     });
     console.log("Courses:", JSON.stringify(courses, null, 2));
 
     console.log("\nTest 2.2: get_courses with course_name_filter");
     const filteredCourses = await mcpServer.callToolForTests("get_courses", {
+      moodle_token: MOODLE_TOKEN_FOR_TESTS,
       course_name_filter: "Aplicações Informáticas B 12º Ano Cópia 1",
     });
     console.log("Filtered Courses:", JSON.stringify(filteredCourses, null, 2));
@@ -41,6 +63,7 @@ async function runAllTests() {
     const filteredCoursesById = await mcpServer.callToolForTests(
       "get_courses",
       {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
         course_name_filter: "6",
       }
     );
@@ -53,7 +76,10 @@ async function runAllTests() {
     // Use a valid course_id if known, else fallback to 2
     const courseContents = (await mcpServer.callToolForTests(
       "get_course_contents",
-      { course_id: 6 }
+      {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
+        course_id: 6,
+      }
     )) as unknown[];
     console.log("Course Contents:", JSON.stringify(courseContents[0], null, 2));
 
@@ -62,6 +88,7 @@ async function runAllTests() {
     const pageContent = await mcpServer.callToolForTests(
       "get_page_module_content",
       {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
         page_content_url: "https://127.0.0.1/moodle/mod/assign/view.php?id=150",
       }
     );
@@ -72,6 +99,7 @@ async function runAllTests() {
     const resourceContent = await mcpServer.callToolForTests(
       "get_resource_file_content",
       {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
         resource_file_url:
           "https://127.0.0.1/moodle/webservice/pluginfile.php/309/mod_resource/content/7/solucoes_11_12.pdf",
         mimetype: "pdf",
@@ -82,7 +110,10 @@ async function runAllTests() {
     console.log("\nTest 6.1: fetch_activity_content by activity_id");
     const fetchedContentById = await mcpServer.callToolForTests(
       "fetch_activity_content",
-      { activity_id: 150 }
+      {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
+        activity_id: 150,
+      }
     );
     console.log("Fetched Activity Content (by id):", fetchedContentById);
 
@@ -92,6 +123,7 @@ async function runAllTests() {
     const fetchedContentByNames = await mcpServer.callToolForTests(
       "fetch_activity_content",
       {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
         course_id: 6,
         activity_name: "Componentes Fundamentais de um PC",
       }

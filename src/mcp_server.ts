@@ -22,12 +22,10 @@ import { MOODLE_URL } from "../config/index.js";
 
 export class MoodleMCP {
   private server: Server;
-  private moodleClient: MoodleApiClient;
   private version: string = pkg.version;
   private toolValidator: ToolValidator;
 
   constructor() {
-    this.moodleClient = new MoodleApiClient();
     this.toolValidator = ToolValidator.getInstance();
 
     // A Informação do Servidor (nome, versão)
@@ -153,16 +151,23 @@ export class MoodleMCP {
       console.error(`handleToolInternal: Invalid input for ${toolName}:`, validation.error?.message, "Input:", input);
       throw validation.error || new McpError(ErrorCode.InvalidParams, "Unknown validation error");
     }
-    const validatedInput = validation.validatedData;
+    const { moodle_token, ...actualToolParams } = validation.validatedData;
     
-    console.debug(`handleToolInternal: Calling tool '${toolName}' with validated input:`, validatedInput);
+    if (!moodle_token) { // Dupla verificação, embora o Zod já deva ter apanhado
+      throw new McpError(ErrorCode.InvalidParams, `Moodle token not provided for tool ${toolName}.`);
+    }
+
+    // ADICIONADO: Instanciar MoodleApiClient com o token fornecido
+    const moodleClient = new MoodleApiClient(moodle_token);
+
+    console.debug(`handleToolInternal: Calling tool '${toolName}' with validated input (token redacted from log):`, actualToolParams);
 
     // A sua lógica de switch que chama this.moodleClient...
     // Adapte o retorno para que o handler do SDK CallToolRequestSchema possa formatá-lo.
     switch (toolName) {
       case 'get_courses': {
-        const { course_name_filter } = validatedInput as { course_name_filter?: string | null }; // Permitir null
-        let courses = await this.moodleClient.getCourses();
+        const { course_name_filter } = actualToolParams as { course_name_filter?: string | null }; // Permitir null
+        let courses = await moodleClient.getCourses();
         if (course_name_filter && typeof course_name_filter === "string" && course_name_filter.trim() !== "") {
           const filterText = course_name_filter.toLowerCase().trim();
           courses = courses.filter(course =>
@@ -173,33 +178,33 @@ export class MoodleMCP {
         return courses;
       }
       case 'get_course_contents': {
-        const { course_id } = validatedInput as GetCourseContentsInput;
-        return await this.moodleClient.getCourseContents(course_id);
+        const { course_id } = actualToolParams as GetCourseContentsInput;
+        return await moodleClient.getCourseContents(course_id);
       }
       case 'get_page_module_content': {
-        const { page_content_url } = validatedInput as { page_content_url: string };
-        const htmlAsTextContent = await this.moodleClient.getPageModuleContentByUrl(page_content_url);
+        const { page_content_url } = actualToolParams as { page_content_url: string };
+        const htmlAsTextContent = await moodleClient.getPageModuleContentByUrl(page_content_url);
         return htmlAsTextContent || "[Conteúdo da página não encontrado ou vazio]"; // Retorna string diretamente
       }
       case 'get_resource_file_content': {
         // ...
-        const fileTextContent = await this.moodleClient.getResourceFileContent(validatedInput.resource_file_url, validatedInput.mimetype);
+        const fileTextContent = await moodleClient.getResourceFileContent(actualToolParams.resource_file_url, actualToolParams.mimetype);
         return fileTextContent || "[Conteúdo do ficheiro não extraído ou vazio]"; // Retorna string diretamente
       }
       case 'get_activity_details': {
         // ...
-        return await this.moodleClient.getActivityDetails(validatedInput);
+        return await moodleClient.getActivityDetails(actualToolParams);
       }
       case 'fetch_activity_content': {
-        const { activity_id, course_id, activity_name } = validatedInput as { activity_id?: number; course_id?: number; activity_name?: string };
+        const { activity_id, course_id, activity_name } = actualToolParams as { activity_id?: number; course_id?: number; activity_name?: string };
         let baseActivityDetails; // Detalhes básicos do módulo
 
         // Passo 1: Obter os detalhes básicos da atividade (cmid, course_id, modname, instance, etc.)
         // Usando a lógica já refinada de get_activity_details
         if (activity_id !== undefined) { // activity_id é o cmid
-            baseActivityDetails = await this.moodleClient.getActivityDetails({ activity_id });
+            baseActivityDetails = await moodleClient.getActivityDetails({ activity_id });
         } else if (course_id && activity_name) {
-            baseActivityDetails = await this.moodleClient.getActivityDetails({ course_id, activity_name });
+            baseActivityDetails = await moodleClient.getActivityDetails({ course_id, activity_name });
         } else {
             throw new McpError(ErrorCode.InvalidParams, 'Insufficient parameters for fetch_activity_content. Provide activity_id OR (course_id AND activity_name).');
         }
@@ -241,7 +246,7 @@ export class MoodleMCP {
               console.debug(`Fetching rich content for assign (instance: ${numericInstanceId}, course: ${numericCourseId})`);
               try {
                   // Chama getAssignmentDetails com courseId e instanceId
-                  const assignmentData = await this.moodleClient.getAssignmentDetails(
+                  const assignmentData = await moodleClient.getAssignmentDetails(
                       numericCourseId,
                       numericInstanceId
                   );
@@ -303,7 +308,7 @@ export class MoodleMCP {
                 if (mainHtmlFile && mainHtmlFile.fileurl) {
                     try {
                         // getPageModuleContentByUrl PRECISA usar o token para URLs de ficheiros de conteúdo
-                        pageHtmlContent = await this.moodleClient.getPageModuleContentByUrl(mainHtmlFile.fileurl); // Esta função precisa ser robusta e usar o token
+                        pageHtmlContent = await moodleClient.getPageModuleContentByUrl(mainHtmlFile.fileurl); // Esta função precisa ser robusta e usar o token
                     } catch (e) {
                           if (e && typeof e === 'object' && 'message' in e) {
                             console.warn(`Failed to fetch page content from fileurl ${mainHtmlFile.fileurl}: ${(e as { message?: string }).message}. Falling back to description or URL.`);
@@ -312,7 +317,7 @@ export class MoodleMCP {
                           }
                           if (!pageHtmlContent && baseActivityDetails.url) { // Fallback para a URL principal se a descrição for vazia
                             try {
-                                pageHtmlContent = await this.moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
+                                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
                             } catch (e2) {
                                 if (e2 && typeof e2 === 'object' && 'message' in e2) {
                                     console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${(e2 as { message?: string }).message}`);
@@ -328,7 +333,7 @@ export class MoodleMCP {
                 }
                 if (!pageHtmlContent && baseActivityDetails.url) { // Se não há description nem fileurl, tentar a URL principal
                       try {
-                        pageHtmlContent = await this.moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
+                        pageHtmlContent = await moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
                     } catch (e) {
                         if (e && typeof e === 'object' && 'message' in e) {
                             console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${(e as { message?: string }).message}`);
@@ -354,7 +359,7 @@ export class MoodleMCP {
                 if (mainFile && mainFile.fileurl && mainFile.mimetype) {
                     try {
                         // getResourceFileContent PRECISA usar o token
-                        richContent = await this.moodleClient.getResourceFileContent(mainFile.fileurl, mainFile.mimetype);
+                        richContent = await moodleClient.getResourceFileContent(mainFile.fileurl, mainFile.mimetype);
                         files = [{
                             filename: mainFile.filename ?? '',
                             fileurl: mainFile.fileurl ?? '',
@@ -391,7 +396,7 @@ export class MoodleMCP {
                 // Usar mod_forum_get_forum_discussions_paginated ou mod_forum_get_forum_discussions
                 // Para obter, por exemplo, os N tópicos mais recentes e a descrição do fórum.
                 try {
-                    const forumData = await this.moodleClient.getForumDiscussions(instanceId, /* options */);
+                    const forumData = await moodleClient.getForumDiscussions(instanceId, /* options */);
                     let forumIntro = baseActivityDetails.intro || baseActivityDetails.description || "";
                     if (forumIntro) {
                         const $intro = cheerio.load(forumIntro);
