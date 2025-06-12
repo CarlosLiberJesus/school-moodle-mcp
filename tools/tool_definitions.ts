@@ -556,4 +556,50 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
       ],
     },
   },
+  {
+    name: "get_course_activities",
+    description: "Retrieves a list of all activities for a specific course from Moodle.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        moodle_token: {
+          type: "string",
+          description: "The Moodle API token for authentication.",
+        },
+        course_id: {
+          type: "integer",
+          description: "The ID of the course to retrieve activities for.",
+        },
+      },
+      required: ["moodle_token", "course_id"],
+    },
+    outputSchema: {
+      type: "array",
+      description: "An array of activity objects. Each object contains details about a specific Moodle activity.",
+      items: {
+        type: "object",
+        properties: {
+          id: {
+            type: "integer",
+            description: "The activity module ID.",
+          },
+          name: {
+            type: "string",
+            description: "The name of the activity.",
+          },
+          url: {
+            type: "string",
+            format: "url",
+            nullable: true,
+            description: "The URL to view the activity.",
+          },
+          timemodified: {
+            type: "integer",
+            description: "Unix timestamp of when the activity was last modified.",
+          },
+        },
+        required: ["id", "name", "timemodified"],
+      },
+    },
+  },
 ];
