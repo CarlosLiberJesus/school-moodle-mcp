@@ -119,6 +119,13 @@ export class ToolValidator {
           ])
         )
     );
+    this.validators.set(
+      "get_course_activities",
+      z.object({
+        moodle_token: z.string().min(1, { message: "moodle_token is required." }),
+        course_id: z.number().int().positive({ message: "course_id must be a positive integer." }),
+      })
+    );
   }
 
   public validateInput(

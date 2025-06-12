@@ -1,4 +1,7 @@
 // src/mcp_server.ts
+import fs from 'fs'; // Keep this one
+import path from 'path'; // Keep this one
+import { fileURLToPath } from 'url'; // Keep this one
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -15,7 +18,16 @@ import type {
     MoodleModuleContent,
     MoodleForumDiscussion
 } from './../moodle/moodle_types.js';
-import pkg from '../package.json' with { type: "json" };
+// import pkg from '../package.json' with { type: "json" };
+
+// Helper to get __dirname in ES modules for mcp_server.ts
+const mcpModuleFilename = fileURLToPath(import.meta.url);
+const mcpModuleDirname = path.dirname(mcpModuleFilename);
+
+// Load package.json for version
+const packageJsonPath = path.resolve(mcpModuleDirname, '../package.json');
+const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+// Removed duplicated imports and __filename/__dirname blocks
 import * as cheerio from 'cheerio';
 import { MOODLE_URL } from "../config/index.js";
 
@@ -180,6 +192,26 @@ export class MoodleMCP {
       case 'get_course_contents': {
         const { course_id } = actualToolParams as GetCourseContentsInput;
         return await moodleClient.getCourseContents(course_id);
+      }
+      case 'get_course_activities': {
+        const { course_id } = actualToolParams as { course_id: number };
+        const sections = await moodleClient.getCourseContents(course_id);
+        const activitiesList: { id: number; name: string; url: string | null; timemodified: number }[] = [];
+        if (sections && sections.length > 0) {
+          for (const section of sections) {
+            if (section.modules && section.modules.length > 0) {
+              for (const module of section.modules) {
+                activitiesList.push({
+                  id: module.id,
+                  name: module.name,
+                  url: module.url || null, // Ensure null if undefined
+                  timemodified: module.timemodified || 0, // Default to 0 if undefined, as schema requires integer
+                });
+              }
+            }
+          }
+        }
+        return activitiesList;
       }
       case 'get_page_module_content': {
         const { page_content_url } = actualToolParams as { page_content_url: string };
