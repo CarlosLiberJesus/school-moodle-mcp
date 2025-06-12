@@ -129,6 +129,20 @@ async function runAllTests() {
       }
     );
     console.log("Fetched Activity Content (by names):", fetchedContentByNames);
+
+    console.log("\nTest 7: get_course_activities");
+    // Usa um course_id válido do teu Moodle!
+    const courseActivities = await mcpServer.callToolForTests(
+      "get_course_activities",
+      {
+        moodle_token: MOODLE_TOKEN_FOR_TESTS,
+        course_id: 6, // <-- substitui por um ID de curso válido no teu Moodle
+      }
+    );
+    console.log(
+      "Course Activities:",
+      JSON.stringify(courseActivities, null, 2)
+    );
   } catch (error) {
     console.error("Test failed:", error);
   }

@@ -558,7 +558,8 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
   },
   {
     name: "get_course_activities",
-    description: "Retrieves a list of all activities for a specific course from Moodle.",
+    description:
+      "Retrieves a list of all activities for a specific course from Moodle.",
     inputSchema: {
       type: "object",
       properties: {
@@ -575,7 +576,8 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
     },
     outputSchema: {
       type: "array",
-      description: "An array of activity objects. Each object contains details about a specific Moodle activity.",
+      description:
+        "An array of activity objects. Each object contains details about a specific Moodle activity.",
       items: {
         type: "object",
         properties: {
@@ -593,9 +595,16 @@ export const toolDefinitions: ToolDefinitionSchema[] = [
             nullable: true,
             description: "The URL to view the activity.",
           },
+          fileurl: {
+            type: "string",
+            format: "url",
+            nullable: true,
+            description: "Activity might also have a file path associated.",
+          },
           timemodified: {
             type: "integer",
-            description: "Unix timestamp of when the activity was last modified.",
+            description:
+              "Unix timestamp of when the activity was last modified.",
           },
         },
         required: ["id", "name", "timemodified"],
