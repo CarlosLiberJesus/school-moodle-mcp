@@ -7,9 +7,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Carregar variáveis de ambiente específicas para teste, se necessário, ou usar as globais
-dotenv.config({ path: path.resolve(__dirname, "../../.env") }); // Ajuste o caminho para o seu .env
+dotenv.config({ path: path.resolve(__dirname, "../.env") }); // Ajuste o caminho para o seu .env
 
-const MOODLE_TOKEN_FOR_TESTS = process.env.MOODLE_TOKEN; // Usa o token do .env
+const MOODLE_TOKEN_FOR_TESTS = process.env.MOODLE_TOKEN_FOR_TESTS; // Usa o token do .env
 
 if (!MOODLE_TOKEN_FOR_TESTS) {
   console.error(

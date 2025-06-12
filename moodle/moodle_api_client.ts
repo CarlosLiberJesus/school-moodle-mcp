@@ -14,18 +14,13 @@ import type {
   MoodleForumData,
 } from "./moodle_types.js";
 import { Buffer } from "node:buffer";
-import pdf from 'pdf-parse';
-import mammoth from 'mammoth';
-// Importar pdf-parse e mammoth quando forem usados
 
 export class MoodleApiClient {
   private httpClient: AxiosInstance;
 
   constructor(moodleToken: string) {
     if (!MOODLE_URL) {
-      throw new Error(
-        "MoodleApiClient: MOODLE_URL or MOODLE_TOKEN is not configured."
-      );
+      throw new Error("MoodleApiClient: MOODLE_URL is not configured.");
     }
     if (!moodleToken) {
       // MODIFICADO: Verificar o token passado
@@ -215,9 +210,11 @@ export class MoodleApiClient {
 
       if (mimetype.includes("pdf")) {
         try {
+          // Importação dinâmica aqui!
+          const pdf = (await import("pdf-parse")).default;
           const pdfData = await pdf(fileBuffer);
           return pdfData.text;
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error parsing PDF:", error);
           return "[Erro ao processar PDF: " + error.message + "]";
         }
@@ -227,9 +224,10 @@ export class MoodleApiClient {
         )
       ) {
         try {
+          const mammoth = (await import("mammoth")).default;
           const result = await mammoth.extractRawText({ buffer: fileBuffer });
           return result.value;
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error parsing DOCX:", error);
           return "[Erro ao processar DOCX: " + error.message + "]";
         }
