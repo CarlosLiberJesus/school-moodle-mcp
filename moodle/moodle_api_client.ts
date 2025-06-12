@@ -14,9 +14,9 @@ import type {
   MoodleForumData,
 } from "./moodle_types.js";
 import { Buffer } from "node:buffer";
+import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
 // Importar pdf-parse e mammoth quando forem usados
-// import pdf from 'pdf-parse';
-// import mammoth from 'mammoth';
 
 export class MoodleApiClient {
   private httpClient: AxiosInstance;
@@ -214,15 +214,25 @@ export class MoodleApiClient {
       const fileBuffer = Buffer.from(response.data);
 
       if (mimetype.includes("pdf")) {
-        console.warn("PDF parsing not yet implemented.");
-        return "[Conteúdo PDF não processado devido à falta de parser]";
+        try {
+          const pdfData = await pdf(fileBuffer);
+          return pdfData.text;
+        } catch (error) {
+          console.error("Error parsing PDF:", error);
+          return "[Erro ao processar PDF: " + error.message + "]";
+        }
       } else if (
         mimetype.includes(
           "vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
       ) {
-        console.warn("DOCX parsing not yet implemented.");
-        return "[Conteúdo DOCX não processado devido à falta de parser]";
+        try {
+          const result = await mammoth.extractRawText({ buffer: fileBuffer });
+          return result.value;
+        } catch (error) {
+          console.error("Error parsing DOCX:", error);
+          return "[Erro ao processar DOCX: " + error.message + "]";
+        }
       } else if (mimetype.startsWith("text/")) {
         return fileBuffer.toString("utf-8");
       } else {
