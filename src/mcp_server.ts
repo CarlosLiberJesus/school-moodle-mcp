@@ -3,7 +3,6 @@ import fs from "fs"; // Keep this one
 import path from "path"; // Keep this one
 import { fileURLToPath } from "url"; // Keep this one
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema, // Reintroduzir estes
   ListToolsRequestSchema,
