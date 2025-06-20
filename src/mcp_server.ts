@@ -3,12 +3,13 @@ import fs from "fs"; // Keep this one
 import path from "path"; // Keep this one
 import { fileURLToPath } from "url"; // Keep this one
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+// StdioServerTransport import removed
 import {
-  CallToolRequestSchema, // Reintroduzir estes
+  CallToolRequestSchema,
   ListToolsRequestSchema,
   McpError,
   ErrorCode,
-} from "@modelcontextprotocol/sdk/types.js"; // Certifique-se que os tipos do SDK estão aqui
+} from "@modelcontextprotocol/sdk/types.js";
 import { MoodleApiClient } from "./../moodle/moodle_api_client.js";
 import {
   toolDefinitions,
@@ -20,7 +21,8 @@ import type {
   MoodleModuleContent,
   MoodleForumDiscussion,
 } from "./../moodle/moodle_types.js";
-// import pkg from '../package.json' with { type: "json" };
+import * as cheerio from "cheerio";
+import { MOODLE_URL } from "../config/index.js";
 
 // Helper to get __dirname in ES modules for mcp_server.ts
 const mcpModuleFilename = fileURLToPath(import.meta.url);
@@ -29,9 +31,6 @@ const mcpModuleDirname = path.dirname(mcpModuleFilename);
 // Load package.json for version
 const packageJsonPath = path.resolve(mcpModuleDirname, "../package.json");
 const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-// Removed duplicated imports and __filename/__dirname blocks
-import * as cheerio from "cheerio";
-import { MOODLE_URL } from "../config/index.js";
 
 export class MoodleMCP {
   private server: Server;
@@ -41,7 +40,6 @@ export class MoodleMCP {
   constructor() {
     this.toolValidator = ToolValidator.getInstance();
 
-    // A Informação do Servidor (nome, versão)
     const serverInfo = {
       name: "school-moodle-mcp",
       version: this.version,
@@ -52,12 +50,9 @@ export class MoodleMCP {
       Pick<ToolDefinitionSchema, "description" | "inputSchema" | "outputSchema">
     >;
 
-    // As Capacidades do Servidor
-    // A forma como 'tools' aqui lida com ListTools e CallTool.
     const serverCapabilities = {
       capabilities: {
         resources: {},
-        // Se o SDK @modelcontextprotocol/sdk espera um array de definições de ferramentas aqui
         tools: toolDefinitions.reduce((acc, td) => {
           acc[td.name] = {
             description: td.description,
@@ -70,12 +65,9 @@ export class MoodleMCP {
     };
 
     this.server = new Server(serverInfo, serverCapabilities);
-
-    // Reintroduza os handlers específicos do SDK
     this.setupSdkRequestHandlers();
 
     this.server.onerror = (error) => {
-      // Tentar obter mais detalhes do erro, se possível
       console.error(
         "MCP Server Core Error:",
         error,
@@ -85,14 +77,16 @@ export class MoodleMCP {
         console.error("MCP Server Core Error Stack:", error.stack);
       }
     };
+  }
 
-    // ... (signal handlers)
+  // Method to make the SDK server instance available
+  public getServer(): Server {
+    return this.server;
   }
 
   private setupSdkRequestHandlers() {
-    // Handler para ListTools
     this.server.setRequestHandler(ListToolsRequestSchema, async (_request) => {
-      console.info("SDK: Received ListToolsRequest"); // Removido JSON.stringify para brevidade
+      console.info("SDK: Received ListToolsRequest");
       const toolsForSdk = toolDefinitions.map((td) => ({
         name: td.name,
         description: td.description,
@@ -105,10 +99,8 @@ export class MoodleMCP {
       return { tools: toolsForSdk };
     });
 
-    // Handler para CallTool
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const toolName = request.params.name;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolInput =
         request.params.input || (request.params as any).arguments || {};
 
@@ -132,14 +124,13 @@ export class MoodleMCP {
         return {
           content: [
             {
-              type: "text", // Idealmente, o SDK teria um tipo 'json_object' ou 'application/json'
+              type: "text",
               text: JSON.stringify(resultData, null, 2),
             },
           ],
         };
       } catch (error: unknown) {
         if (error instanceof McpError) throw error;
-        // Type guard para Error
         if (error && typeof error === "object" && "message" in error) {
           console.error(
             `MCP Error in SDK CallTool for ${toolName}:`,
@@ -152,7 +143,6 @@ export class MoodleMCP {
             }`
           );
         } else {
-          // fallback para erros não convencionais
           console.error(`MCP Error in SDK CallTool for ${toolName}:`, error);
           throw new McpError(
             ErrorCode.InternalError,
@@ -165,23 +155,18 @@ export class MoodleMCP {
     });
   }
 
-  // Renomeie o seu handler de lógica principal para evitar conflito de nomes
-  // e para que ele possa ser chamado tanto pelo SDK quanto pelos seus testes.
   private async handleToolInternal(
     toolName: string,
     input: Record<string, unknown>
   ): Promise<unknown> {
     const toolDefinition = toolDefinitions.find((td) => td.name === toolName);
     if (!toolDefinition) {
-      // Este erro deve ser capturado antes pelo SDK se a ferramenta não foi listada,
-      // mas é uma boa salvaguarda.
       console.warn(`handleToolInternal: Unknown tool called: ${toolName}`);
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${toolName}`);
     }
 
     const validation = this.toolValidator.validateInput(toolName, input);
     if (!validation.isValid || !validation.validatedData) {
-      // Adicionado check para validatedData
       console.error(
         `handleToolInternal: Invalid input for ${toolName}:`,
         validation.error?.message,
@@ -196,14 +181,12 @@ export class MoodleMCP {
     const { moodle_token, ...actualToolParams } = validation.validatedData;
 
     if (!moodle_token) {
-      // Dupla verificação, embora o Zod já deva ter apanhado
       throw new McpError(
         ErrorCode.InvalidParams,
         `Moodle token not provided for tool ${toolName}.`
       );
     }
 
-    // ADICIONADO: Instanciar MoodleApiClient com o token fornecido
     const moodleClient = new MoodleApiClient(moodle_token);
 
     console.debug(
@@ -211,13 +194,11 @@ export class MoodleMCP {
       actualToolParams
     );
 
-    // A sua lógica de switch que chama this.moodleClient...
-    // Adapte o retorno para que o handler do SDK CallToolRequestSchema possa formatá-lo.
     switch (toolName) {
       case "get_courses": {
         const { course_name_filter } = actualToolParams as {
           course_name_filter?: string | null;
-        }; // Permitir null
+        };
         let courses = await moodleClient.getCourses();
         if (
           course_name_filter &&
@@ -253,11 +234,10 @@ export class MoodleMCP {
           for (const section of sections) {
             if (section.modules && section.modules.length > 0) {
               for (const module of section.modules) {
-                // console.log("FORÇADO CARLOS", module);
                 activitiesList.push({
                   id: module.id,
                   name: module.name,
-                  url: module.url || null, // Ensure null if undefined
+                  url: module.url || null,
                   fileurl:
                     Array.isArray(module.contents) && module.contents.length > 0
                       ? module.contents[0].fileurl || null
@@ -267,7 +247,7 @@ export class MoodleMCP {
                       ? typeof module.contents[0].timemodified === "number"
                         ? module.contents[0].timemodified
                         : 0
-                      : 0, // Default to 0 if undefined or not a number
+                      : 0,
                 });
               }
             }
@@ -284,21 +264,21 @@ export class MoodleMCP {
         );
         return (
           htmlAsTextContent || "[Conteúdo da página não encontrado ou vazio]"
-        ); // Retorna string diretamente
+        );
       }
       case "get_resource_file_content": {
-        // ...
+        const { resource_file_url, mimetype } = actualToolParams as { resource_file_url: string; mimetype: string };
         const fileTextContent = await moodleClient.getResourceFileContent(
-          actualToolParams.resource_file_url,
-          actualToolParams.mimetype
+          resource_file_url,
+          mimetype
         );
         return (
           fileTextContent || "[Conteúdo do ficheiro não extraído ou vazio]"
-        ); // Retorna string diretamente
+        );
       }
       case "get_activity_details": {
-        // ...
-        return await moodleClient.getActivityDetails(actualToolParams);
+        const params = actualToolParams as { activity_id?: number, course_id?: number, activity_name?: string };
+        return await moodleClient.getActivityDetails(params);
       }
       case "fetch_activity_content": {
         const { activity_id, course_id, activity_name } = actualToolParams as {
@@ -306,12 +286,9 @@ export class MoodleMCP {
           course_id?: number;
           activity_name?: string;
         };
-        let baseActivityDetails; // Detalhes básicos do módulo
+        let baseActivityDetails;
 
-        // Passo 1: Obter os detalhes básicos da atividade (cmid, course_id, modname, instance, etc.)
-        // Usando a lógica já refinada de get_activity_details
         if (activity_id !== undefined) {
-          // activity_id é o cmid
           baseActivityDetails = await moodleClient.getActivityDetails({
             activity_id,
           });
@@ -334,12 +311,11 @@ export class MoodleMCP {
           );
         }
 
-        // Extrair informações cruciais dos detalhes base
-        const cmid = baseActivityDetails.id; // Course Module ID
-        const effectiveCourseId = baseActivityDetails.course; // Garantir que temos o course_id
+        const cmid = baseActivityDetails.id;
+        const effectiveCourseId = baseActivityDetails.course;
         const activityUrl =
           baseActivityDetails.url ||
-          (baseActivityDetails.id
+          (baseActivityDetails.id && baseActivityDetails.modname
             ? `${(MOODLE_URL ?? "").replace(
                 "/webservice/rest/server.php",
                 ""
@@ -347,27 +323,22 @@ export class MoodleMCP {
                 baseActivityDetails.id
               }`
             : "URL da atividade não disponível");
+
         if (!effectiveCourseId) {
           throw new McpError(
             ErrorCode.InternalError,
             "Could not determine course_id for activity"
           );
         }
-        console.debug(
-          `Debug courseId: effectiveCourseId=${effectiveCourseId}, baseActivityDetails.course=${baseActivityDetails.course}, course_id=${course_id}`
-        );
 
         const modname = baseActivityDetails.modname?.toLowerCase();
-        const instanceId = baseActivityDetails.instance; // ID da instância do módulo (e.g., ID na tabela 'assign')
+        const instanceId = baseActivityDetails.instance;
 
         console.debug(
           `fetch_activity_content: Base details for cmid ${cmid}, modname ${modname}, instance ${instanceId}, course ${effectiveCourseId}`
         );
 
-        // Passo 2: Usar APIs específicas do Moodle com base no modname
-        let richContent:
-          | string
-          | object = `[Conteúdo não processado para modname: ${modname}]`;
+        let richContent: string | object = `[Conteúdo não processado para modname: ${modname}]`;
         type ActivityFile = {
           filename: string;
           fileurl: string;
@@ -377,8 +348,6 @@ export class MoodleMCP {
 
         switch (modname) {
           case "assign": {
-            // effectiveCourseId e instanceId são extraídos corretamente de baseActivityDetails.
-            // Assegura-te que eles são efetivamente números.
             const numericCourseId = Number(effectiveCourseId);
             const numericInstanceId = Number(instanceId);
 
@@ -388,23 +357,14 @@ export class MoodleMCP {
                 `Invalid courseId or instanceId for assign: courseId=${effectiveCourseId}, instanceId=${instanceId}`
               );
             }
-
-            console.debug(
-              `Fetching rich content for assign (instance: ${numericInstanceId}, course: ${numericCourseId})`
-            );
             try {
-              // Chama getAssignmentDetails com courseId e instanceId
               const assignmentData = await moodleClient.getAssignmentDetails(
                 numericCourseId,
                 numericInstanceId
               );
-
               if (assignmentData && assignmentData.intro) {
                 const $ = cheerio.load(assignmentData.intro);
-                richContent =
-                  $.text().trim() ||
-                  "[Descrição do trabalho vazia ou apenas HTML]";
-
+                richContent = $.text().trim() || "[Descrição do trabalho vazia ou apenas HTML]";
                 if (
                   assignmentData.introfiles &&
                   assignmentData.introfiles.length > 0
@@ -416,77 +376,29 @@ export class MoodleMCP {
                       mimetype: file.mimetype ?? "",
                     })
                   );
-                  richContent += `\n\nFicheiros Anexos: ${files
+                  richContent += `
+
+Ficheiros Anexos: ${files
                     .map((f) => f.filename)
                     .join(", ")}`;
                 }
               } else {
-                // Se assignmentData for encontrado mas não tiver 'intro'
-                if (assignmentData) {
-                  richContent =
-                    "[Detalhes do trabalho encontrados, mas a descrição (intro) está em falta ou vazia]";
-                  console.warn(
-                    "Assignment data found but 'intro' is missing:",
-                    JSON.stringify(assignmentData, null, 2)
-                  );
-                } else {
-                  // Este caso não deveria acontecer se getAssignmentDetails lançar erro quando não encontra
-                  richContent =
-                    "[Descrição (intro) do trabalho não encontrada nos detalhes ricos (assignmentData nulo/undefined)]";
-                }
+                 richContent = assignmentData ? "[Detalhes do trabalho encontrados, mas a descrição (intro) está em falta ou vazia]" : "[Descrição (intro) do trabalho não encontrada]";
               }
             } catch (e) {
-              if (e instanceof McpError) {
-                // Re-lançar McpError
-                console.error(
-                  `MCP Error fetching rich assignment details: ${e.message} (Code: ${e.code})`
-                );
-                richContent = `[Erro ao buscar detalhes do trabalho: ${e.message}]`;
-              } else if (e && typeof e === "object" && "message" in e) {
-                console.error(
-                  `Error fetching rich assignment details: ${
-                    (e as Error).message
-                  }`
-                );
-                richContent = `[Erro ao buscar detalhes do trabalho: ${
-                  (e as Error).message
-                }]`;
-              } else {
-                console.error(
-                  `Unknown error fetching rich assignment details:`,
-                  e
-                );
-                richContent = `[Erro desconhecido ao buscar detalhes do trabalho: ${JSON.stringify(
-                  e
-                )}]`;
-              }
+                const errorMessage = (e instanceof Error) ? e.message : JSON.stringify(e);
+                richContent = `[Erro ao buscar detalhes do trabalho: ${errorMessage}]`;
+                if (e instanceof McpError) console.error(`MCP Error fetching rich assignment details: ${errorMessage} (Code: ${e.code})`);
+                else console.error(`Error fetching rich assignment details: ${errorMessage}`);
             }
             break;
           }
           case "page": {
-            console.debug(`Fetching rich content for page (cmid: ${cmid})`);
-            // baseActivityDetails (de core_course_get_course_module) pode já ter o conteúdo.
             let pageHtmlContent = "";
             if (baseActivityDetails.description) {
-              // Algumas páginas simples usam a descrição
               pageHtmlContent = baseActivityDetails.description;
             }
-            // Verificar 'contents' ou 'contentfiles' para o HTML principal
-            // O objeto baseActivityDetails.contents pode variar
-            const pageContents =
-              baseActivityDetails.contents ||
-              (Array.isArray(baseActivityDetails.contentfiles) &&
-              baseActivityDetails.contentfiles.length > 0
-                ? [
-                    {
-                      type: "file", // Assumindo
-                      filename: baseActivityDetails.contentfiles[0]?.filename,
-                      fileurl: baseActivityDetails.contentfiles[0]?.fileurl,
-                      mimetype: baseActivityDetails.contentfiles[0]?.mimetype,
-                    },
-                  ]
-                : []);
-
+            const pageContents = baseActivityDetails.contents || [];
             const mainHtmlFile = pageContents.find(
               (c: MoodleModuleContent) =>
                 c.type === "file" &&
@@ -496,245 +408,102 @@ export class MoodleMCP {
 
             if (mainHtmlFile && mainHtmlFile.fileurl) {
               try {
-                // getPageModuleContentByUrl PRECISA usar o token para URLs de ficheiros de conteúdo
-                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(
-                  mainHtmlFile.fileurl
-                ); // Esta função precisa ser robusta e usar o token
+                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(mainHtmlFile.fileurl);
               } catch (e) {
-                if (e && typeof e === "object" && "message" in e) {
-                  console.warn(
-                    `Failed to fetch page content from fileurl ${
-                      mainHtmlFile.fileurl
-                    }: ${
-                      (e as { message?: string }).message
-                    }. Falling back to description or URL.`
-                  );
-                } else {
-                  console.warn(
-                    `Failed to fetch page content from fileurl ${
-                      mainHtmlFile.fileurl
-                    }: ${JSON.stringify(
-                      e
-                    )}. Falling back to description or URL.`
-                  );
-                }
-                if (!pageHtmlContent && baseActivityDetails.url) {
-                  // Fallback para a URL principal se a descrição for vazia
-                  try {
-                    pageHtmlContent =
-                      await moodleClient.getPageModuleContentByUrl(
-                        baseActivityDetails.url
-                      );
-                  } catch (e2) {
-                    if (e2 && typeof e2 === "object" && "message" in e2) {
-                      console.error(
-                        `Error fetching page content from main URL ${
-                          baseActivityDetails.url
-                        }: ${(e2 as { message?: string }).message}`
-                      );
-                    } else {
-                      console.error(
-                        `Error fetching page content from main URL ${
-                          baseActivityDetails.url
-                        }: ${JSON.stringify(e2)}`
-                      );
-                    }
-                  }
-                }
+                console.warn(`Failed to fetch page content from fileurl ${mainHtmlFile.fileurl}: ${(e as Error).message}. Falling back.`);
               }
             }
-            if (!pageHtmlContent && baseActivityDetails.description) {
-              // Tentar descrição primeiro se não usou fileurl
-              pageHtmlContent = baseActivityDetails.description;
+            if (!pageHtmlContent && baseActivityDetails.url && !(mainHtmlFile && mainHtmlFile.fileurl)) {
+                 try {
+                    pageHtmlContent = await moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
+                 } catch (e) {
+                    console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${(e as Error).message}`);
+                 }
             }
-            if (!pageHtmlContent && baseActivityDetails.url) {
-              // Se não há description nem fileurl, tentar a URL principal
-              try {
-                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(
-                  baseActivityDetails.url
-                );
-              } catch (e) {
-                if (e && typeof e === "object" && "message" in e) {
-                  console.error(
-                    `Error fetching page content from main URL ${
-                      baseActivityDetails.url
-                    }: ${(e as { message?: string }).message}`
-                  );
-                } else {
-                  console.error(
-                    `Error fetching page content from main URL ${
-                      baseActivityDetails.url
-                    }: ${JSON.stringify(e)}`
-                  );
-                }
-              }
-            }
-
             if (pageHtmlContent) {
               const $ = cheerio.load(pageHtmlContent);
-              richContent =
-                $.text().trim() || "[Conteúdo da página vazio ou apenas HTML]";
+              richContent = $.text().trim() || "[Conteúdo da página vazio ou apenas HTML]";
             } else {
               richContent = "[Conteúdo da página não encontrado]";
             }
             break;
           }
-
           case "resource": {
-            console.debug(`Fetching rich content for resource (cmid: ${cmid})`);
             const resourceContents = baseActivityDetails.contents || [];
-            const mainFile = resourceContents.find(
-              (c: MoodleModuleContent) => c.type === "file"
-            );
+            const mainFile = resourceContents.find((c: MoodleModuleContent) => c.type === "file");
             if (mainFile && mainFile.fileurl && mainFile.mimetype) {
               try {
-                // getResourceFileContent PRECISA usar o token
-                richContent = await moodleClient.getResourceFileContent(
-                  mainFile.fileurl,
-                  mainFile.mimetype
-                );
-                files = [
-                  {
-                    filename: mainFile.filename ?? "",
-                    fileurl: mainFile.fileurl ?? "",
-                    mimetype: mainFile.mimetype ?? "",
-                  },
-                ];
+                richContent = await moodleClient.getResourceFileContent(mainFile.fileurl, mainFile.mimetype);
+                files = [{
+                  filename: mainFile.filename ?? "",
+                  fileurl: mainFile.fileurl ?? "",
+                  mimetype: mainFile.mimetype ?? "",
+                }];
               } catch (e) {
-                if (e && typeof e === "object" && "message" in e) {
-                  console.error(
-                    `Error fetching resource content: ${
-                      (e as { message?: string }).message
-                    }`
-                  );
-                  richContent = `[Erro ao buscar conteúdo do recurso: ${
-                    (e as { message?: string }).message
-                  }]`;
-                } else {
-                  console.error(`Error fetching resource content:`, e);
-                  richContent = `[Erro ao buscar conteúdo do recurso: ${JSON.stringify(
-                    e
-                  )}]`;
-                }
+                console.error(`Error fetching resource content: ${(e as Error).message}`);
+                richContent = `[Erro ao buscar conteúdo do recurso: ${(e as Error).message}]`;
               }
             } else {
-              richContent =
-                "[Ficheiro do recurso não encontrado ou mimetype em falta]";
+              richContent = "[Ficheiro do recurso não encontrado ou mimetype em falta]";
             }
             break;
           }
-
           case "url": {
-            console.debug(`Fetching rich content for URL (cmid: ${cmid})`);
-            // Para um módulo URL, o "conteúdo" é a própria URL externa e a sua descrição.
-            // A API core_course_get_course_module já deve ter os detalhes.
-            const externalUrl =
-              baseActivityDetails.contents?.[0]?.fileurl ||
-              baseActivityDetails.url; // O Moodle pode colocar a URL externa aqui
-            const description =
-              baseActivityDetails.description ||
-              baseActivityDetails.intro ||
-              "";
+            const externalUrl = baseActivityDetails.contents?.[0]?.fileurl || baseActivityDetails.url;
+            const description = baseActivityDetails.description || baseActivityDetails.intro || "";
             const $ = cheerio.load(description);
-            richContent = `URL: ${externalUrl}\nDescrição: ${$.text().trim()}`;
+            richContent = `URL: ${externalUrl}
+Descrição: ${$.text().trim()}`;
             break;
           }
-
           case "forum": {
-            console.debug(
-              `Fetching rich content for forum (instance: ${instanceId}, course: ${effectiveCourseId})`
-            );
-            // Usar mod_forum_get_forum_discussions_paginated ou mod_forum_get_forum_discussions
-            // Para obter, por exemplo, os N tópicos mais recentes e a descrição do fórum.
             try {
-              const forumData = await moodleClient.getForumDiscussions(
-                instanceId /* options */
-              );
-              let forumIntro =
-                baseActivityDetails.intro ||
-                baseActivityDetails.description ||
-                "";
+              const forumData = await moodleClient.getForumDiscussions(instanceId);
+              let forumIntro = baseActivityDetails.intro || baseActivityDetails.description || "";
               if (forumIntro) {
                 const $intro = cheerio.load(forumIntro);
-                forumIntro = `Introdução do Fórum: ${$intro.text().trim()}\n\n`;
-              }
+                forumIntro = `Introdução do Fórum: ${$intro.text().trim()}
 
-              if (
-                forumData &&
-                forumData.discussions &&
-                forumData.discussions.length > 0
-              ) {
-                const discussionSummaries = forumData.discussions
-                  .slice(0, 5)
-                  .map(
-                    (d: MoodleForumDiscussion) =>
-                      `- Tópico: "${d.name}" por ${d.userfullname} (Respostas: ${d.numreplies})`
-                  )
-                  .join("\n");
-                richContent = `${forumIntro}Últimas Discussões:\n${discussionSummaries}`;
+`;
+              }
+              if (forumData && forumData.discussions && forumData.discussions.length > 0) {
+                const discussionSummaries = forumData.discussions.slice(0, 5).map(
+                  (d: MoodleForumDiscussion) =>
+                    `- Tópico: "${d.name}" por ${d.userfullname} (Respostas: ${d.numreplies})`
+                ).join("
+");
+                richContent = `${forumIntro}Últimas Discussões:
+${discussionSummaries}`;
               } else {
                 richContent = `${forumIntro}[Nenhuma discussão encontrada ou fórum vazio]`;
               }
             } catch (e) {
-              if (e && typeof e === "object" && "message" in e) {
-                console.error(
-                  `Error fetching forum discussions: ${
-                    (e as { message?: string }).message
-                  }`
-                );
-                richContent = `[Erro ao buscar discussões do fórum: ${
-                  (e as { message?: string }).message
-                }]`;
-              } else {
-                console.error(`Error fetching forum discussions:`, e);
-                richContent = `[Erro ao buscar discussões do fórum: ${JSON.stringify(
-                  e
-                )}]`;
-              }
+                const errorMessage = (e instanceof Error) ? e.message : JSON.stringify(e);
+                richContent = `[Erro ao buscar discussões do fórum: ${errorMessage}]`;
+                console.error(`Error fetching forum discussions: ${errorMessage}`);
             }
             break;
           }
-
-          // TODO: Adicionar casos para 'quiz', 'lesson', 'wiki', etc.
-          // Para 'quiz', poderias usar mod_quiz_get_quizzes_by_courses (filtrando pelo instanceId)
-          // ou mod_quiz_get_quiz_access_information para obter a descrição e as regras.
-          // Obter as perguntas em si é mais complexo e pode não ser desejado.
-
           default: {
-            // Fallback: tentar extrair de 'description' ou 'intro' se existirem nos baseActivityDetails
             let fallbackContent = "";
             if (baseActivityDetails.description) {
-              const $ = cheerio.load(baseActivityDetails.description);
-              fallbackContent = $.text().trim();
+              fallbackContent = cheerio.load(baseActivityDetails.description).text().trim();
             } else if (baseActivityDetails.intro) {
-              const $ = cheerio.load(baseActivityDetails.intro);
-              fallbackContent = $.text().trim();
+              fallbackContent = cheerio.load(baseActivityDetails.intro).text().trim();
             }
-            if (fallbackContent) {
-              richContent = `Descrição/Introdução: ${fallbackContent}`;
-            } else {
-              richContent = `[Tipo de atividade "${modname}" não tem método de extração de conteúdo específico. Nenhuma descrição geral encontrada.]`;
-            }
+            richContent = fallbackContent ? `Descrição/Introdução: ${fallbackContent}` : `[Tipo de atividade "${modname}" não tem método de extração de conteúdo específico. Nenhuma descrição geral encontrada.]`;
           }
         }
 
-        // Passo 3: Retornar o conteúdo de forma estruturada
-        // (Alinhado com o outputSchema que definimos antes)
         return {
-          contentType:
-            typeof richContent === "string" && richContent.startsWith("[")
-              ? "error"
-              : "text", // Simplificado, pode melhorar
+          contentType: typeof richContent === "string" && richContent.startsWith("[") ? "error" : "text",
           content: richContent,
           files: files,
-          // Adicionar mais metadados se útil:
           activityName: baseActivityDetails.name,
           activityType: modname,
           activityUrl: activityUrl,
         };
       }
-
-      // Certifique-se que eles também retornam os dados brutos que o handler do SDK pode então stringificar ou envolver.
       default:
         console.warn(
           `handleToolInternal: Switch case not found for tool: ${toolName}`
@@ -746,18 +515,12 @@ export class MoodleMCP {
     }
   }
 
-  // O seu método para testes pode continuar a existir e chamar handleToolInternal
-  async callToolForTests(
+  async callToolForTests( // This method might be used by existing tests
     toolName: string,
     input: Record<string, unknown>
   ): Promise<unknown> {
-    // Este método é para os seus testes locais, não para o SDK MCP.
     return await this.handleToolInternal(toolName, input);
   }
 
-  async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.log(`Moodle MCP server v${this.version} running on stdio...`);
-  }
+  // run() method is removed
 }
