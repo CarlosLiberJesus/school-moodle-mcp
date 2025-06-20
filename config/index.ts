@@ -36,6 +36,7 @@ export const MOODLE_URL = process.env.MOODLE_URL;
 export const NODE_ENV = process.env.NODE_ENV || "development";
 export const NODE_TLS_REJECT_UNAUTHORIZED =
   process.env.NODE_TLS_REJECT_UNAUTHORIZED || "0"; // Mantendo a sua lógica
+export const CONFIG_PORT: string = process.env.PORT || "3100";
 
 if (!MOODLE_URL) {
   console.error(

@@ -24,6 +24,49 @@ O projeto está em fase de desenvolvimento do MCP server, que atua como middlewa
 - O sistema de orquestração (Cline)
 - O processador de linguagem (LLM)
 
+## Running the Server
+
+The server operates over HTTP and exposes the Model Context Protocol.
+
+### Prerequisites
+
+- Node.js and npm installed.
+- Moodle URL and Token configured in a `.env` file in the project root (see `.env.example` if available, or set `MOODLE_URL` and `MOODLE_TOKEN` environment variables).
+
+### Building and Starting
+
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+2.  **Build the server:**
+    ```bash
+    npm run build
+    ```
+
+3.  **Start the server:**
+    ```bash
+    npm start
+    ```
+
+By default, the server listens on port 3100. You can specify a different port using the `PORT` environment variable:
+
+```bash
+PORT=3000 npm start
+```
+
+The server exposes the Model Context Protocol endpoint at `POST /mcp`.
+
+### Development
+
+For development, you can use the `dev` script, which uses `ts-node-dev` for automatic recompilation and server restarts:
+
+```bash
+npm run dev
+```
+This will also typically run on port 3100 unless the `PORT` environment variable is set.
+
 ## Estrutura do Projeto
 - `src/`: Código fonte do MCP server
 - `build/`: Código compilado
