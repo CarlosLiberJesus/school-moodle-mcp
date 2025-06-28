@@ -1,12 +1,13 @@
 // src/index.ts
 import path from "path";
 import { fileURLToPath } from "url";
-import express from "express"; // Added
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"; // Added
+import express from "express";
+// StreamableHTTPServerTransport import removido pois não é mais usado diretamente aqui
 import { setupFileLogger } from "../lib/logger.js";
 import { MoodleMCP } from "./mcp_server.js";
 import "./../config/index.js"; // Garante que config é executado
 import { toolDefinitions } from "../tools/tool_definitions.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 
 // --- Configuração do Logger ---
 const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -27,74 +28,109 @@ async function startServer() {
 
   app.post("/mcp", async (req, res) => {
     console.log("-----------------------------------------------------");
-    console.log("Initial POST /mcp request body:", JSON.stringify(req.body, null, 2));
+    console.log(
+      "Initial POST /mcp request body:",
+      JSON.stringify(req.body, null, 2)
+    );
 
-    // Transformação do pedido se 'method' for um nome de ferramenta conhecido
-    const knownToolNames = toolDefinitions.map(td => td.name);
-    if (req.body && typeof req.body.method === 'string' && knownToolNames.includes(req.body.method)) {
-      console.log(`MCP Request Transformer: Original method '${req.body.method}' matches a known tool name. Transforming to 'call_tool' format.`);
-      const toolName = req.body.method;
-      const originalToolParams = req.body.params || {};
+    const { id, method: methodName, params: toolParams, jsonrpc } = req.body;
 
-      req.body = {
-        jsonrpc: req.body.jsonrpc || "2.0",
-        id: req.body.id,
-        method: "call_tool", // O método JSON-RPC que o CallToolRequestSchema espera
-        params: {
-          name: toolName,           // O nome original do método torna-se o nome da ferramenta
-          input: originalToolParams // Os parâmetros originais tornam-se o 'input' da ferramenta
-        }
-      };
-      console.log("MCP Request Transformer: Transformed request body:", JSON.stringify(req.body, null, 2));
+    if (jsonrpc !== "2.0") {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        id: id || null,
+        error: {
+          code: -32600,
+          message: "Invalid Request: JSON-RPC version must be 2.0",
+        },
+      });
+      return;
+    }
+    if (typeof methodName !== "string") {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        id: id || null,
+        error: {
+          code: -32600,
+          message: "Invalid Request: Method must be a string",
+        },
+      });
+      return;
     }
 
-    let mcp: MoodleMCP; // Declare mcp here
-    let transport: StreamableHTTPServerTransport; // Declare transport here
+    const knownToolNames = toolDefinitions.map((td) => td.name);
 
-    try {
-      mcp = new MoodleMCP(); // Instantiate MoodleMCP
-      const sdkServer = mcp.getServer(); // Get the SDK Server instance
+    if (knownToolNames.includes(methodName)) {
+      // É uma chamada de ferramenta conhecida, tratar diretamente
+      console.log(
+        `Direct Dispatch: Method '${methodName}' is a known tool. Processing directly.`
+      );
+      try {
+        const mcp = new MoodleMCP(); // Instanciar para aceder a callToolForTests
+        // `toolParams` já é o objeto de parâmetros da ferramenta, incluindo o moodle_token
+        const result = await mcp.callToolForTests(methodName, toolParams || {});
 
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // Stateless
-      });
-
-      // It's important to handle client connection closure to clean up the transport
-      res.on("close", () => {
-        console.log("Request closed, closing transport.");
-        if (transport) {
-          // Check if transport was initialized
-          transport.close();
+        let responseContent;
+        if (typeof result === "string") {
+          responseContent = [{ type: "text", text: result }];
+        } else {
+          responseContent = [
+            { type: "text", text: JSON.stringify(result, null, 2) },
+          ];
         }
-        // Note: The SDK's McpServer or our MoodleMCP doesn't have a specific .close() method
-        // for this stateless, per-request server setup.
-        // If MoodleMCP acquired resources that need explicit cleanup per request,
-        // a cleanup method on mcp would be needed here.
-      });
 
-      await sdkServer.connect(transport);
-      // Pass the raw Express request and response objects, and the parsed body
-      await transport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error("Error handling MCP request:", error);
-      // Ensure transport is closed on error too, if it was initialized
-      if (transport! && !res.headersSent) {
-        // Check if transport was initialized
-        transport.close();
-      }
-      if (!res.headersSent) {
-        res.status(500).json({
+        res.status(200).json({
           jsonrpc: "2.0",
-          error: {
-            code: -32603,
-            message: "Internal server error",
-          },
-          id: req.body?.id || null, // Try to get request id from body
+          id: id,
+          result: { content: responseContent },
         });
+        return;
+      } catch (error: unknown) {
+        console.error(`Error directly executing tool '${methodName}':`, error);
+        if (error instanceof McpError) {
+          res.status(200).json({
+            jsonrpc: "2.0",
+            id: id,
+            error: {
+              code: error.code,
+              message: error.message,
+              data: error.data,
+            },
+          });
+          return;
+        } else if (error instanceof Error) {
+          res.status(200).json({
+            jsonrpc: "2.0",
+            id: id,
+            error: { code: -32000, message: `Server error: ${error.message}` },
+          });
+          return;
+        } else {
+          res.status(200).json({
+            jsonrpc: "2.0",
+            id: id,
+            error: { code: -32000, message: "Unknown server error" },
+          });
+          return;
+        }
       }
+    } else {
+      // Método não é uma ferramenta conhecida.
+      // Poderíamos aqui tentar usar o SDK para outros métodos MCP (ex: list_tools),
+      // mas por agora, vamos apenas dizer Method Not Found para simplificar.
+      console.warn(
+        `Direct Dispatch: Method '${methodName}' not found in known tools or special MCP methods.`
+      );
+      res.status(200).json({
+        jsonrpc: "2.0",
+        id: id,
+        error: { code: -32601, message: `Method not found: ${methodName}` },
+      });
+      return;
     }
   });
 
+  // GET e DELETE /mcp podem permanecer como estão, pois não são para chamadas de ferramentas.
   app.get("/mcp", (req, res) => {
     // Made synchronous as it doesn't await
     console.log("Received GET /mcp request; Method Not Allowed.");
