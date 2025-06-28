@@ -85,8 +85,10 @@ export class MoodleMCP {
   }
 
   private setupSdkRequestHandlers() {
-    this.server.setRequestHandler(ListToolsRequestSchema, async (_request) => {
+    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
       console.info("SDK: Received ListToolsRequest");
+      console.log("CallToolRequest received:", request?.params?.name);
+
       const toolsForSdk = toolDefinitions.map((td) => ({
         name: td.name,
         description: td.description,
@@ -267,7 +269,10 @@ export class MoodleMCP {
         );
       }
       case "get_resource_file_content": {
-        const { resource_file_url, mimetype } = actualToolParams as { resource_file_url: string; mimetype: string };
+        const { resource_file_url, mimetype } = actualToolParams as {
+          resource_file_url: string;
+          mimetype: string;
+        };
         const fileTextContent = await moodleClient.getResourceFileContent(
           resource_file_url,
           mimetype
@@ -277,7 +282,11 @@ export class MoodleMCP {
         );
       }
       case "get_activity_details": {
-        const params = actualToolParams as { activity_id?: number, course_id?: number, activity_name?: string };
+        const params = actualToolParams as {
+          activity_id?: number;
+          course_id?: number;
+          activity_name?: string;
+        };
         return await moodleClient.getActivityDetails(params);
       }
       case "fetch_activity_content": {
@@ -338,7 +347,9 @@ export class MoodleMCP {
           `fetch_activity_content: Base details for cmid ${cmid}, modname ${modname}, instance ${instanceId}, course ${effectiveCourseId}`
         );
 
-        let richContent: string | object = `[Conteúdo não processado para modname: ${modname}]`;
+        let richContent:
+          | string
+          | object = `[Conteúdo não processado para modname: ${modname}]`;
         type ActivityFile = {
           filename: string;
           fileurl: string;
@@ -364,7 +375,9 @@ export class MoodleMCP {
               );
               if (assignmentData && assignmentData.intro) {
                 const $ = cheerio.load(assignmentData.intro);
-                richContent = $.text().trim() || "[Descrição do trabalho vazia ou apenas HTML]";
+                richContent =
+                  $.text().trim() ||
+                  "[Descrição do trabalho vazia ou apenas HTML]";
                 if (
                   assignmentData.introfiles &&
                   assignmentData.introfiles.length > 0
@@ -378,18 +391,25 @@ export class MoodleMCP {
                   );
                   richContent += `
 
-Ficheiros Anexos: ${files
-                    .map((f) => f.filename)
-                    .join(", ")}`;
+Ficheiros Anexos: ${files.map((f) => f.filename).join(", ")}`;
                 }
               } else {
-                 richContent = assignmentData ? "[Detalhes do trabalho encontrados, mas a descrição (intro) está em falta ou vazia]" : "[Descrição (intro) do trabalho não encontrada]";
+                richContent = assignmentData
+                  ? "[Detalhes do trabalho encontrados, mas a descrição (intro) está em falta ou vazia]"
+                  : "[Descrição (intro) do trabalho não encontrada]";
               }
             } catch (e) {
-                const errorMessage = (e instanceof Error) ? e.message : JSON.stringify(e);
-                richContent = `[Erro ao buscar detalhes do trabalho: ${errorMessage}]`;
-                if (e instanceof McpError) console.error(`MCP Error fetching rich assignment details: ${errorMessage} (Code: ${e.code})`);
-                else console.error(`Error fetching rich assignment details: ${errorMessage}`);
+              const errorMessage =
+                e instanceof Error ? e.message : JSON.stringify(e);
+              richContent = `[Erro ao buscar detalhes do trabalho: ${errorMessage}]`;
+              if (e instanceof McpError)
+                console.error(
+                  `MCP Error fetching rich assignment details: ${errorMessage} (Code: ${e.code})`
+                );
+              else
+                console.error(
+                  `Error fetching rich assignment details: ${errorMessage}`
+                );
             }
             break;
           }
@@ -408,21 +428,38 @@ Ficheiros Anexos: ${files
 
             if (mainHtmlFile && mainHtmlFile.fileurl) {
               try {
-                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(mainHtmlFile.fileurl);
+                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(
+                  mainHtmlFile.fileurl
+                );
               } catch (e) {
-                console.warn(`Failed to fetch page content from fileurl ${mainHtmlFile.fileurl}: ${(e as Error).message}. Falling back.`);
+                console.warn(
+                  `Failed to fetch page content from fileurl ${
+                    mainHtmlFile.fileurl
+                  }: ${(e as Error).message}. Falling back.`
+                );
               }
             }
-            if (!pageHtmlContent && baseActivityDetails.url && !(mainHtmlFile && mainHtmlFile.fileurl)) {
-                 try {
-                    pageHtmlContent = await moodleClient.getPageModuleContentByUrl(baseActivityDetails.url);
-                 } catch (e) {
-                    console.error(`Error fetching page content from main URL ${baseActivityDetails.url}: ${(e as Error).message}`);
-                 }
+            if (
+              !pageHtmlContent &&
+              baseActivityDetails.url &&
+              !(mainHtmlFile && mainHtmlFile.fileurl)
+            ) {
+              try {
+                pageHtmlContent = await moodleClient.getPageModuleContentByUrl(
+                  baseActivityDetails.url
+                );
+              } catch (e) {
+                console.error(
+                  `Error fetching page content from main URL ${
+                    baseActivityDetails.url
+                  }: ${(e as Error).message}`
+                );
+              }
             }
             if (pageHtmlContent) {
               const $ = cheerio.load(pageHtmlContent);
-              richContent = $.text().trim() || "[Conteúdo da página vazio ou apenas HTML]";
+              richContent =
+                $.text().trim() || "[Conteúdo da página vazio ou apenas HTML]";
             } else {
               richContent = "[Conteúdo da página não encontrado]";
             }
@@ -430,27 +467,44 @@ Ficheiros Anexos: ${files
           }
           case "resource": {
             const resourceContents = baseActivityDetails.contents || [];
-            const mainFile = resourceContents.find((c: MoodleModuleContent) => c.type === "file");
+            const mainFile = resourceContents.find(
+              (c: MoodleModuleContent) => c.type === "file"
+            );
             if (mainFile && mainFile.fileurl && mainFile.mimetype) {
               try {
-                richContent = await moodleClient.getResourceFileContent(mainFile.fileurl, mainFile.mimetype);
-                files = [{
-                  filename: mainFile.filename ?? "",
-                  fileurl: mainFile.fileurl ?? "",
-                  mimetype: mainFile.mimetype ?? "",
-                }];
+                richContent = await moodleClient.getResourceFileContent(
+                  mainFile.fileurl,
+                  mainFile.mimetype
+                );
+                files = [
+                  {
+                    filename: mainFile.filename ?? "",
+                    fileurl: mainFile.fileurl ?? "",
+                    mimetype: mainFile.mimetype ?? "",
+                  },
+                ];
               } catch (e) {
-                console.error(`Error fetching resource content: ${(e as Error).message}`);
-                richContent = `[Erro ao buscar conteúdo do recurso: ${(e as Error).message}]`;
+                console.error(
+                  `Error fetching resource content: ${(e as Error).message}`
+                );
+                richContent = `[Erro ao buscar conteúdo do recurso: ${
+                  (e as Error).message
+                }]`;
               }
             } else {
-              richContent = "[Ficheiro do recurso não encontrado ou mimetype em falta]";
+              richContent =
+                "[Ficheiro do recurso não encontrado ou mimetype em falta]";
             }
             break;
           }
           case "url": {
-            const externalUrl = baseActivityDetails.contents?.[0]?.fileurl || baseActivityDetails.url;
-            const description = baseActivityDetails.description || baseActivityDetails.intro || "";
+            const externalUrl =
+              baseActivityDetails.contents?.[0]?.fileurl ||
+              baseActivityDetails.url;
+            const description =
+              baseActivityDetails.description ||
+              baseActivityDetails.intro ||
+              "";
             const $ = cheerio.load(description);
             richContent = `URL: ${externalUrl}
 Descrição: ${$.text().trim()}`;
@@ -458,45 +512,70 @@ Descrição: ${$.text().trim()}`;
           }
           case "forum": {
             try {
-              const forumData = await moodleClient.getForumDiscussions(instanceId);
-              let forumIntro = baseActivityDetails.intro || baseActivityDetails.description || "";
+              const forumData = await moodleClient.getForumDiscussions(
+                instanceId
+              );
+              let forumIntro =
+                baseActivityDetails.intro ||
+                baseActivityDetails.description ||
+                "";
               if (forumIntro) {
                 const $intro = cheerio.load(forumIntro);
                 forumIntro = `Introdução do Fórum: ${$intro.text().trim()}
 
 `;
               }
-              if (forumData && forumData.discussions && forumData.discussions.length > 0) {
-                const discussionSummaries = forumData.discussions.slice(0, 5).map(
-                  (d: MoodleForumDiscussion) =>
-                    `- Tópico: "${d.name}" por ${d.userfullname} (Respostas: ${d.numreplies})`
-                ).join("
-");
+              if (
+                forumData &&
+                forumData.discussions &&
+                forumData.discussions.length > 0
+              ) {
+                const discussionSummaries = forumData.discussions
+                  .slice(0, 5)
+                  .map(
+                    (d: MoodleForumDiscussion) =>
+                      `- Tópico: "${d.name}" por ${d.userfullname} (Respostas: ${d.numreplies})`
+                  )
+                  .join("");
                 richContent = `${forumIntro}Últimas Discussões:
 ${discussionSummaries}`;
               } else {
                 richContent = `${forumIntro}[Nenhuma discussão encontrada ou fórum vazio]`;
               }
             } catch (e) {
-                const errorMessage = (e instanceof Error) ? e.message : JSON.stringify(e);
-                richContent = `[Erro ao buscar discussões do fórum: ${errorMessage}]`;
-                console.error(`Error fetching forum discussions: ${errorMessage}`);
+              const errorMessage =
+                e instanceof Error ? e.message : JSON.stringify(e);
+              richContent = `[Erro ao buscar discussões do fórum: ${errorMessage}]`;
+              console.error(
+                `Error fetching forum discussions: ${errorMessage}`
+              );
             }
             break;
           }
           default: {
             let fallbackContent = "";
             if (baseActivityDetails.description) {
-              fallbackContent = cheerio.load(baseActivityDetails.description).text().trim();
+              fallbackContent = cheerio
+                .load(baseActivityDetails.description)
+                .text()
+                .trim();
             } else if (baseActivityDetails.intro) {
-              fallbackContent = cheerio.load(baseActivityDetails.intro).text().trim();
+              fallbackContent = cheerio
+                .load(baseActivityDetails.intro)
+                .text()
+                .trim();
             }
-            richContent = fallbackContent ? `Descrição/Introdução: ${fallbackContent}` : `[Tipo de atividade "${modname}" não tem método de extração de conteúdo específico. Nenhuma descrição geral encontrada.]`;
+            richContent = fallbackContent
+              ? `Descrição/Introdução: ${fallbackContent}`
+              : `[Tipo de atividade "${modname}" não tem método de extração de conteúdo específico. Nenhuma descrição geral encontrada.]`;
           }
         }
 
         return {
-          contentType: typeof richContent === "string" && richContent.startsWith("[") ? "error" : "text",
+          contentType:
+            typeof richContent === "string" && richContent.startsWith("[")
+              ? "error"
+              : "text",
           content: richContent,
           files: files,
           activityName: baseActivityDetails.name,
@@ -515,7 +594,8 @@ ${discussionSummaries}`;
     }
   }
 
-  async callToolForTests( // This method might be used by existing tests
+  async callToolForTests(
+    // This method might be used by existing tests
     toolName: string,
     input: Record<string, unknown>
   ): Promise<unknown> {
