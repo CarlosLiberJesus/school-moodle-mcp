@@ -26,6 +26,28 @@ async function startServer() {
   const PORT = process.env.PORT || 3001;
 
   app.post("/mcp", async (req, res) => {
+    console.log("-----------------------------------------------------");
+    console.log("Initial POST /mcp request body:", JSON.stringify(req.body, null, 2));
+
+    // Transformação do pedido se 'method' for um nome de ferramenta conhecido
+    const knownToolNames = toolDefinitions.map(td => td.name);
+    if (req.body && typeof req.body.method === 'string' && knownToolNames.includes(req.body.method)) {
+      console.log(`MCP Request Transformer: Original method '${req.body.method}' matches a known tool name. Transforming to 'call_tool' format.`);
+      const toolName = req.body.method;
+      const originalToolParams = req.body.params || {};
+
+      req.body = {
+        jsonrpc: req.body.jsonrpc || "2.0",
+        id: req.body.id,
+        method: "call_tool", // O método JSON-RPC que o CallToolRequestSchema espera
+        params: {
+          name: toolName,           // O nome original do método torna-se o nome da ferramenta
+          input: originalToolParams // Os parâmetros originais tornam-se o 'input' da ferramenta
+        }
+      };
+      console.log("MCP Request Transformer: Transformed request body:", JSON.stringify(req.body, null, 2));
+    }
+
     let mcp: MoodleMCP; // Declare mcp here
     let transport: StreamableHTTPServerTransport; // Declare transport here
 

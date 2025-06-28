@@ -65,16 +65,17 @@ export class MoodleMCP {
     };
 
     this.server = new Server(serverInfo, serverCapabilities);
-    this.setupSdkRequestHandlers();
+    this.setupSdkRequestHandlers(); // Chamada movida para depois da atribuição de this.server
+
+    console.log("MoodleMCP: Server instance created and request handlers being set up."); // Adicionado
 
     this.server.onerror = (error) => {
-      console.error(
-        "MCP Server Core Error:",
-        error,
-        JSON.stringify(error, null, 2)
+      console.error( // Alterado para console.error para destaque
+        "MoodleMCP: MCP Server Core Error (onerror):",
+        JSON.stringify(error, null, 2) // Log do objeto de erro completo
       );
       if (error instanceof Error && error.stack) {
-        console.error("MCP Server Core Error Stack:", error.stack);
+        console.error("MoodleMCP: MCP Server Core Error Stack:", error.stack);
       }
     };
   }
@@ -84,9 +85,9 @@ export class MoodleMCP {
     return this.server;
   }
 
-  private setupSdkRequestHandlers() {
+  private setupSdkRequestHandlers() { // Isolado para clareza
     this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-      console.info("SDK: Received ListToolsRequest");
+      console.info("MoodleMCP: SDK: Received ListToolsRequest"); // Adicionado "MoodleMCP:"
       console.log("CallToolRequest received:", request?.params?.name);
 
       const toolsForSdk = toolDefinitions.map((td) => ({
@@ -102,12 +103,15 @@ export class MoodleMCP {
     });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      // Este log é crucial para ver se este manipulador é atingido
+      console.info("MoodleMCP: SDK: Received CallToolRequest. Request params:", JSON.stringify(request.params, null, 2)); // Adicionado "MoodleMCP:" e stringify
+
       const toolName = request.params.name;
       const toolInput =
         request.params.input || (request.params as any).arguments || {};
 
-      console.info(
-        `SDK: Received CallToolRequest for tool: '${toolName}' with input:`,
+      console.info( // Adicionado "MoodleMCP:"
+        `MoodleMCP: SDK: Processing CallToolRequest for tool: '${toolName}' with input:`,
         toolInput
       );
 
