@@ -29,7 +29,8 @@ const mcpModuleFilename = fileURLToPath(import.meta.url);
 const mcpModuleDirname = path.dirname(mcpModuleFilename);
 
 // Load package.json for version
-const packageJsonPath = path.resolve(mcpModuleDirname, "../package.json");
+// When compiled, this file is in build/src/, so we need to go up two levels to reach project root
+const packageJsonPath = path.resolve(mcpModuleDirname, "../../package.json");
 const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 
 export class MoodleMCP {

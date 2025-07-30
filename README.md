@@ -76,7 +76,7 @@ For development, you can use the `dev` script, which uses `ts-node-dev` for auto
 npm run dev
 ```
 
-This will also typically run on port 3100 unless the `PORT` environment variable is set.
+This will also typically run on port 3001 unless the `PORT` environment variable is set.
 
 ## Estrutura do Projeto
 

@@ -16,10 +16,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const configModuleFilename = fileURLToPath(import.meta.url);
-const configModuleDirname = path.dirname(configModuleFilename); // Em build, será E:\MCPs\school-moodle-mcp\build\config
-const projectRoot = path.resolve(configModuleDirname, ".."); // Será E:\MCPs\school-moodle-mcp
-const envPath = path.join(projectRoot, ".env"); // Será E:\MCPs\school-moodle-mcp\.env
-
+const configModuleDirname = path.dirname(configModuleFilename); // school-moodle-mcp\build\config
+const projectRoot = path.resolve(configModuleDirname, "..", '..'); // school-moodle-mcp
+console.log(`Project root directory: ${projectRoot}`);
+const envPath = path.join(projectRoot, ".env"); // school-moodle-mcp\.env
+console.log(`Loading environment variables from: ${envPath}`);
 dotenv.config({ path: envPath });
 
 export const MOODLE_URL = process.env.MOODLE_URL;

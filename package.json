@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node build/index.js",
     "build": "tsc && npm run copy-config",
-    "copy-config": "xcopy src\\config build\\config /E /I /Y",
+    "copy-config": "xcopy config build\\config /E /I /Y",
     "dev": "ts-node-dev --respawn src/index.ts",
     "test:activity": "tsx test/test_activity_fetch.test.ts",
     "test:jest": "jest"

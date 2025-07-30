@@ -142,3 +142,4 @@ Thumbs.db
 
 # Arquivos de configuração do VS Code (exceto settings.json compartilhados)
 .vscode/*
+package-lock.json
